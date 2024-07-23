@@ -1,0 +1,12 @@
+终端输入：
+# Python 3.x
+python -m http.server 8000
+
+不行的话输入：
+# Python 2.x
+python -m SimpleHTTPServer 8000
+
+浏览器输入：http://localhost:8000，之后网页收藏
+
+希望关闭终端后台运行：nohup python -m SimpleHTTPServer 8000 &
+重启电脑后，要重新运行
