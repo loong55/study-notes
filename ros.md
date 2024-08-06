@@ -327,7 +327,7 @@ ps -e | grep import
 kill -9 21526(import的进程)
 ```
 
-##### 终端写代码
+### 终端写代码
 
 ###### C++
 
@@ -392,9 +392,6 @@ rosrun 包名 C++节点		#运行
 
 ##PS:进入家目录的隐藏文件：.bashrc文件
 ##末尾添加source ~/工作空间/devel/setup.bash，更加方便
-
-##或者PS：进入工作空间：Ctrl+H创建.catkin_workspace文件
-##末尾添加：source ./devel/setup.bash
 ```
 
 ###### python
@@ -450,7 +447,7 @@ rosrun 包名 自定义文件名.py
 ##输出结果:Hello World!!!!
 ```
 
-##### VScode写代码
+### VScode写代码
 
 ```shell
 mkdir -p xxx_ws/src(必须得有 src)		#创建 ROS 工作空间
@@ -546,15 +543,15 @@ source ./devel/setup.bash
 rosrun 包名 helloworld.py 或者 c++节点
 ```
 
-##### launch文件和计算图
+### launch文件和计算图
 
 用于一次性启动多个 ROS 节点
 
-1. 选定功能包右击 ---> 添加 launch 文件夹
+1. 选定功能包右击 ---> 添加文件夹，命名为 launch 
 
-2. 选定 launch 文件夹右击 ---> 添加 launch 文件
+2. 选定 launch 文件夹右击 ---> 添加文件，命名为xxx.launch 
 
-3. 编辑 launch 文件内容
+3. 编辑 xxx.launch 文件内容
 
     ```shell
     <launch>
@@ -567,9 +564,11 @@ rosrun 包名 helloworld.py 或者 c++节点
     - node ---> 包含的某个节点
     - pkg -----> 功能包
     - type ----> 被运行的节点文件
-    - name --> 为节点命名
+    - name --> 为节点命名，自定义
     - output-> 设置日志的输出目标
 
+    终端运行
+    
     ```shell
     roslaunch 包名 launch文件名
     #运行 launch 文件
@@ -586,7 +585,7 @@ rqt_graph	#新终端输入
 
 ##     第二章 通信机制
 
-#### 2.0概述
+### 2.0概述
 
 ROS 中的基本通信机制主要有如下三种实现策略:
 
@@ -594,25 +593,22 @@ ROS 中的基本通信机制主要有如下三种实现策略:
 - 服务通信(请求响应模式)，类似点击视频观看，只有点击才能观看
 - 参数服务器(参数共享模式)，类似在线腾讯文档，多人填写查看信息
 
-#### 2.1话题通信
+### 2.1话题通信
 
 ![](pic_linux/01话题通信模型.jpg)
 
 ```shell
-mkdir -p demo/src(必须得有 src)		#创建 ROS 工作空间
-cd demo
+mkdir -p ws/src		#创建 ROS 工作空间
+cd ws
 catkin_make	#编译，初始化ROS空间
 
-#进入工作空间-demo：Ctrl+H显示	.catkin_workspace隐藏文件，文件
-#!/bin/bash
-source devel/setup.bash
+#进入家目录的隐藏文件：.bashrc		末尾添加:
+source ~/工作空间/devel/setup.bash
 
-cd demo		# 启动 vscode
+cd ws		# 启动 vscode
 code .
 ```
 
-ctrl + shift + B 调用编译，选择:	catkin_make:build;
-会自动添加c_cpp_properties.json，settings.json。
  ctrl + shift + B 调用编译，选择：catkin_make:build 右边的齿轮，添加配置文件
 
 ```json
@@ -785,16 +781,34 @@ target_link_libraries(sub
 )
 ```
 
-ctrl shift + B编译；ctrl alt + T新建终端roscore启动核心；分割终端，运行发布者节点
+ctrl shift + B编译；ctrl alt + T新建终端
 
 ```shell
-cd demo
-rosrun demo01 pub
+roscore	#启动核心
+```
+
+分割终端，运行发布者节点
+
+```shell
+cd ws
+rosrun demo01 pub	#rosrun 包名	节点名
 ```
 
 再次分割终端，运行订阅者节点
 
+```shell
+rosrun demo01 sub
 ```
 
+打印话题小工具
+
+```shell
+rostopic echo chatter	#rostopic echo 话题
+```
+
+查看计算图
+
+```shell
+rqt_graph 		#新终端输入
 ```
 
