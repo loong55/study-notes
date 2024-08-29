@@ -2968,6 +2968,8 @@ bike
 
 #### 话题发布
 
+给乌龟节点发布 角速度与线速度 消息，控制乌龟做圆周运动
+
 ##### 研究话题与消息
 
 ```
@@ -3220,7 +3222,7 @@ rosrun plumbing_test test01_pub_twist_p.py
 
 #### 话题订阅
 
-通过键盘控制乌龟运动后，乌龟会发送运动信息，通过话题订阅获取
+通过键盘控制乌龟运动后，乌龟会发送运动信息，通过话题订阅获取乌龟位姿信息
 
 首先，查看关于位姿信息的话题和消息类型
 
@@ -3380,7 +3382,7 @@ roslaunch plumbing_test start_turtle.launch		#启动乌龟和键盘
 
 ```shell
 cd ws
-rosrun plumbing test02_sub_pose
+rosrun plumbing_test test02_sub_pose
 #终端出现乌龟位姿信息
 ```
 
@@ -3447,6 +3449,8 @@ rosrun plumbing_test test02_sub_pose_p.py
 ```
 
 #### 服务调用
+
+乌龟gui作为服务端，写一个客户端节点，放置乌龟
 
 ##### 话题名称与消息类型
 
@@ -3748,7 +3752,7 @@ book@100ask:~$ rosrun turtlesim turtlesim_node
  * name 节点名称，需要保证其唯一性，不允许包含命名空间
  * options 节点启动选项，被封装进了ros::init_options
  */
-void init(int &argc, char **argv, const std::string& name, uint32_t options = 0);
+ros::init(argc,argv,"talker",ros::init_options::AnonymousName);
 ```
 
 argc和argv的使用
@@ -3786,5 +3790,1556 @@ rosnode list
 /talker_1724496754023255670
 /talker_1724496762085070085
 # 产生同名但不同后缀的节点
+```
+
+#### 话题与服务相关对象
+
+一般由NodeHandle建立
+
+发布对象
+
+```cpp
+ros::NodeHandle nh;//该类封装了 ROS 中的一些常用功能
+ros::Publisher pub = nh.advertise<std_msgs::String>("chatter",10,true);
+    //发布者 对象
+    /*
+        作用：创建发布者对象
+        模板：被发布的消息类型
+
+        参数：
+            参数1: 要发布到的话题
+            参数2: 队列中最大保存的消息数，超出此阀值时，先进的先销毁(时间早的先销毁)
+            参数3：latch(可选)，默认为false.如何设置为true,会保存发布方最后一条消息，
+                当新的订阅对象连接到发布方时，发布方会将这条消息，发送给订阅者
+        使用：
+            latch 设置为true时，可以用于只发布一次消息的情况，如发布静态地图
+    */
+```
+
+订阅方不能查看订阅前的数据，但设置latch为true，可以查看订阅前的最后一条消息
+
+```cpp
+roscore
+```
+
+```
+book@100ask:~/ws$ $ rosrun plumbing_ap demo01_apis_pub 
+[ INFO] [1724560942.800910407]: 发送的消息:Hello 你好！0
+[ INFO] [1724560942.802486624]: 发送的消息:Hello 你好！1
+[ INFO] [1724560943.803039551]: 发送的消息:Hello 你好！2
+[ INFO] [1724560944.802744063]: 发送的消息:Hello 你好！3
+```
+
+```
+book@100ask:~/ws$ rosrun plumbing_apidemo02_apis_sub 
+[ INFO] [1724560949.662738902]: 我听见:Hello 你好！3
+```
+
+```cpp
+//订阅对象
+ros::NodeHandle nh;
+ros::Subscriber sub = nh.subscribe<std_msgs::String>("chatter",10,doMsg);//尖括号可省略
+/*
+作用：创建订阅对象
+模板：订阅的消息类型
+参数：
+	参数1：话题名称
+	参数2：消息队列长度
+	参数3：处理消息的回调函数，如打印消息
+*/
+```
+
+```cpp
+//服务端对象
+ros::NodeHandle nh;
+ros::ServiceServer server = nh.advertiseService("AddInts",doReq);
+/*
+作用：创建服务端对象
+参数：
+	参数1：服务话题名称
+	参数2：处理请求的回调函数
+*/
+```
+
+```cpp
+//客户端对象
+ros::NodeHandle nh;
+ros::ServiceClient client = nh.serviceClient<plumbing_server_client::AddInts>("AddInts");
+/*
+作用：创建客户端对象
+模板：服务消息类型
+参数：服务话题名称
+*/
+
+//请求发送函数
+plumbing_server_client::AddInts  data;
+data = 100;
+client.call(data);
+/*
+函数类型：bool
+	发送成功返回true，并将服务端的响应，封装进data
+*/
+
+//等待服务函数
+ros::service::waitForService("AddInts");
+//或者
+client.waitForExistence();
+```
+
+#### 回旋函数
+
+```cpp
+ros::spinOnce();		//只回调一次处理函数，用于发布数据，运行一次后，运行后面程序
+ros::spin();					//无限次回调处理函数，用于接收数据，后面程序不再运行
+```
+
+#### 时间
+
+```cpp
+#include "ros/ros.h"
+/*
+需求1：获取当前时刻 + 设置指定时刻
+实现：
+    1.准备（头文件，节点初始化，句柄创建）
+    2.获取当前时刻
+    3.设置指定时刻
+
+需求2：程序停顿执行5秒
+实现：
+    1.创建持续时间对象
+    2.休眠
+
+需求3：已知程序开始时刻和运行时间，求运行结束时刻
+实现：
+    1.获取开始执行时刻
+    2.模拟运行时间
+    3.计算结束时刻
+总结：
+    1.时刻与时刻不能相减
+    2.时刻与时间可相加减
+    3.时间之间可以相加减
+
+需求4：每隔1秒钟，在控制台输出一段文本
+实现：
+    1.策略1 ros::Rate(1)
+    2.策略2 定时器
+总结：
+    创建: nh.creatTimer()
+    参数1：时间间隔
+    参数2：回调函数（时间时间 TimerEvent）
+    参数3：是否只启动一次
+    参数4：是否自动启动（当设置为false时，手动调用 timer.start()）
+    定时器启动后：ros::spin()
+*/
+
+//定时器用的回调函数
+void cb(const ros::TimerEvent& event){
+    ROS_INFO("--------");
+    ROS_INFO("函数被调用的时刻：%.2f",event.current_real.toSec());
+
+}
+
+int main(int argc, char  *argv[])
+{
+    //需求1：获取与设置时刻-----------------------------------------------------------------------------------------------------------
+
+    // 1.准备（头文件，节点初始化，句柄创建）
+    setlocale(LC_ALL,"");    
+    ros::init(argc,argv,"hello_time");
+    ros::NodeHandle nh;
+
+    // 2.获取当前时刻
+    ros::Time now = ros::Time::now();
+    //now函数会将当前时刻封装并返回
+    //当前时刻：now 被调用的那一刻
+    //参考系：1970.01.01 00：00：00；中国：参考系+8h
+    ROS_INFO("当前时刻：%.2f",now.toSec());//单位:秒,距离参考系的时间
+    ROS_INFO("当前时刻：%d",now.sec);//单位:秒,距离参考系的时间
+
+    // 3.设置指定时刻
+    ros::Time t1(100,1e9);//距离参考系的时间，参数1：秒，参数2：纳秒,1e9=10^9
+    ros::Time t2(100.66);
+    ROS_INFO("t1 = %.2f",t1.toSec());
+    ROS_INFO("t2 = %.2f",t2.toSec());
+
+    // book@100ask:~/ws$ rosrun plumbing_apis  demo03_apis_time 
+    // [ INFO] [1724583717.898397225]: 当前时刻：1724583717.90
+    // [ INFO] [1724583717.899574252]: 当前时刻：1724583717
+    // [ INFO] [1724583717.899631580]: t1 = 101.00
+    // [ INFO] [1724583717.899685149]: t2 = 100.66
+
+    //需求2：程序停顿执行5秒----------------------------------------------------------------------------------------------------------
+    ROS_INFO("------持续时间-----");
+    ros::Time start = ros::Time::now();
+    ROS_INFO("开始休眠:%.2f",start.toSec());
+    ros::Duration du(4.5);//定时4.5秒
+    du.sleep();//休眠4.5秒
+    ros::Time end = ros::Time::now();
+    ROS_INFO("结束休眠:%.2f",end.toSec());
+    // [ INFO] [1724586367.960657222]: ------持续时间-----
+    // [ INFO] [1724586367.960681601]: 开始休眠:1724586367.96
+    // [ INFO] [1724586372.460918638]: 结束休眠:1724586372.46
+
+	//需求3：已知程序开始时刻和运行时间，求运行结束时刻-------------------------------------------------------------------
+    ROS_INFO("------时间运算-----");
+    // 1.获取开始执行时刻
+    ros::Time begin = ros::Time::now();
+    // 2.模拟运行时间
+    ros::Duration du1(5);//运行5秒钟
+    // 3.计算结束时刻
+    ros::Time stop = begin + du1;//也可以 “减法”
+    ROS_INFO("开始时刻：%.2f",begin.toSec());
+    ROS_INFO("结束时刻：%.2f",stop.toSec());
+    // [ INFO] [1724586979.184085857]: 开始时刻：1724586979.18
+    // [ INFO] [1724586979.184098739]: 结束时刻：1724586984.18
+
+    //时刻与时刻运算
+    //ros::Time sum = begin + stop;时刻没有+操作
+    ros::Duration du2 = stop - begin;
+    ROS_INFO("时刻相减：%.2f",du2.toSec());
+    //[ INFO] [1724587326.316437257]: 时刻相减：5.00
+
+    //持续时间之间的运算
+    ros::Duration du3 = du1 + du2;
+    ros::Duration du4 = du1 - du2;
+    ROS_INFO("du1 + du2：%.2f",du3.toSec());
+    ROS_INFO("du1 - du2：%.2f",du4.toSec());
+    // [ INFO] [1724587504.250559469]: du1 + du2：10.00
+    // [ INFO] [1724587504.250564680]: du1 - du2：0.00
+
+	//需求4：每隔1秒钟，在控制台输出一段文本-----------------------------------------------------------------------------------
+    ROS_INFO("------定时器-----");
+    /*
+    Timer createTimer(Duration period,  //时间间隔 --- 1s
+        const TimerCallback& callback,  //回调函数 --- 封装业务
+        bool oneshot = false,           //是否只执行一次回调函数
+        bool autostart = true)          //是否自动启动定时器
+    */
+    // ros::Timer timer = nh.createTimer(ros::Duration(1),cb);
+    // ros::spin();//需要回旋
+    // // [ INFO] [1724642727.858371742]: ------定时器-----
+    // //间隔1秒输出横杠
+    // // [ INFO] [1724642728.859643751]: --------
+    // // [ INFO] [1724642729.858800596]: --------
+    // // [ INFO] [1724642730.859296727]: --------
+
+    //oneshot参数
+    // ros::Timer timer = nh.createTimer(ros::Duration(1),cb,true);
+    // ros::spin();//需要回旋
+    // [ INFO] [1724643002.441836875]: --------
+
+    //autostart参数
+    ros::Timer timer = nh.createTimer(ros::Duration(1),cb,false,false);
+    //不出现 ------
+    timer.start();//手动启动定时器
+    // [ INFO] [1724643261.505752254]: --------
+    // [ INFO] [1724643262.505615668]: --------
+    // [ INFO] [1724643263.506614365]: --------
+    ros::spin();//需要回旋
+    return 0;
+}
+```
+
+#### 关闭节点
+
+**ros**::**shutdown**();
+
+```cpp
+#include "ros/ros.h"
+#include "std_msgs/String.h" //普通文本类型的消息
+#include <sstream>//拼接字符串
+/*
+打印了50条消息后，关闭节点
+*/
+
+int main(int argc, char  *argv[])
+{   
+    setlocale(LC_ALL,"");
+    ros::init(argc,argv,"talker",ros::init_options::AnonymousName);
+    ros::NodeHandle nh;//该类封装了 ROS 中的一些常用功能
+    ros::Publisher pub = nh.advertise<std_msgs::String>("chatter",10,true);
+    std_msgs::String msg;
+    std::string msg_front = "Hello 你好！"; //消息前缀
+    int count = 0; //消息计数器
+    ros::Rate r(10);    //逻辑(一秒1次)
+    ros::Duration(3.0).sleep(); //延迟3秒发送，用于和管理者通信，避免接收者错过第一条数据
+
+    while (ros::ok())
+    {
+        //如果计数器 >=50,那么关闭节点
+        if (count >= 50)
+        {
+            ros::shutdown();
+        }
+
+        count++;//循环结束前，让 count 自增
+        //使用 stringstream 拼接字符串与编号
+        std::stringstream ss;
+        ss << msg_front << count;
+        msg.data = ss.str();
+        pub.publish(msg);
+        ROS_INFO("发送的消息:%s",msg.data.c_str());
+        r.sleep();
+        //回调函数，目前暂无应用,不能用ros::spin（），会阻塞发布消息
+        ros::spinOnce();
+        ROS_INFO("回调");
+    }
+    return 0;
+}
+```
+
+#### 日志输出
+
+```cpp
+#include "ros/ros.h"
+/*
+ros 中日志：
+    演示不同级别日志的基本使用
+*/
+int main(int argc, char *argv[])
+{
+    setlocale(LC_ALL,"");
+    ros::init(argc,argv,"hello_log");
+    ros::NodeHandle nh;
+
+    //日志输出
+    ROS_DEBUG("调试信息");//不会打印在控制台
+    ROS_INFO("一般信息");
+    ROS_WARN("警告信息");
+    ROS_ERROR("错误信息");
+    ROS_FATAL("严重错误");
+    // [ INFO] [1724646209.954417074]: 一般信息
+    // [ WARN] [1724646209.955213578]: 警告信息
+    // [ERROR] [1724646209.955239990]: 错误信息
+    // [FATAL] [1724646209.955249620]: 严重错误
+    return 0;
+}
+```
+
+### 3.2常用API_PY
+
+#### 初始化
+
+demo01_apis_pub_p.py
+
+```python
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+import rospy
+from std_msgs.msg import String
+
+if __name__ == "__main__":
+    #2.初始化 ROS 节点:命名(唯一)
+    """
+    作用：ros初始化
+
+    参数：
+        name: 节点名
+        argv = None ------ 封装节点调用时传递的参数
+        anonymous = False ------ 为节点生成随机后缀名，可以解决重名问题
+
+    使用：
+        1.argv的使用:可以按照ros中指定的语法格式传参，ros可以解析并加以使用           
+
+        2.anonymous的使用:可以设置为Ture,节点名称会产生随机后缀，解决重名问题
+    """
+    rospy.init_node("talker_p",anonymous=True)
+    #3.实例化 发布者 对象
+    pub = rospy.Publisher("chatter_p",String,queue_size=10)
+    #4.组织被发布的数据，并编写逻辑发布数据
+    msg = String()  #创建 msg 对象
+    msg_front = "hello 你好"
+    count = 0  #计数器 
+    # 设置循环频率
+    rate = rospy.Rate(1)
+    rospy.sleep(3)  #延迟3秒发送数据，防止订阅方接收不到
+    while not rospy.is_shutdown():
+
+        #拼接字符串
+        msg.data = msg_front + str(count)
+
+        pub.publish(msg)
+        rate.sleep()
+        rospy.loginfo("写出的数据:%s",msg.data)
+        count += 1
+```
+
+argv参数
+
+```
+rosrun plumbing_apis  demo01_apis_pub_p.py _A:=10000	#py中不用设置，直接传参
+```
+
+```
+book@100ask:~/ws$ rosparam list
+/rosdistro
+/roslaunch/uris/host_100ask__33747
+/rosversion
+/run_id
+/talker_p/A
+book@100ask:~/ws$ rosparam get /talker_p/A
+10000
+```
+
+anonymous参数
+
+```
+rosrun plumbing_apis  demo01_apis_pub_p.py
+```
+
+```shell
+book@100ask:~$ rosnode list
+/rosout
+/talker_p_64617_1724664465536
+/talker_p_64645_1724664500119
+```
+
+#### 话题与服务相关对象
+
+```python
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+import rospy
+from std_msgs.msg import String
+
+if __name__ == "__main__":
+    rospy.init_node("talker_p",anonymous=True)
+    #3.实例化 发布者 对象
+    """
+    参数latch:
+        bool值，默认值：False
+    作用：
+        如果设置为True,可以将发布的最后一条数据保存，当新的订阅对象连接时，将该数据发送出去
+    使用：
+        latch = True
+    """
+    pub = rospy.Publisher("chatter_p",String,queue_size=10,latch=True)
+    #4.组织被发布的数据，并编写逻辑发布数据
+    msg = String()  #创建 msg 对象
+    msg_front = "hello 你好"
+    count = 0  #计数器 
+    # 设置循环频率
+    rate = rospy.Rate(1)
+    rospy.sleep(3)  #延迟3秒发送数据，防止订阅方接收不到
+    while not rospy.is_shutdown():
+        if count <= 10:
+            #拼接字符串
+            msg.data = msg_front + str(count)
+            pub.publish(msg)
+            rate.sleep()
+            rospy.loginfo("写出的数据:%s",msg.data)
+        count += 1
+```
+
+​    参数latch作用：发布方保存最后一条数据，给订阅方
+
+```
+rosrun plumbing_apis demo01_apis_pub_p.py
+[INFO] [1724665776.938569]: 写出的数据:hello 你好0
+[INFO] [1724665777.940653]: 写出的数据:hello 你好1
+ros[INFO] [1724665778.940354]: 写出的数据:hello 你好2
+[INFO] [1724665779.939760]: 写出的数据:hello 你好3
+[INFO] [1724665780.939404]: 写出的数据:hello 你好4
+[INFO] [1724665781.939696]: 写出的数据:hello 你好5
+[INFO] [1724665782.939669]: 写出的数据:hello 你好6
+[INFO] [1724665783.940090]: 写出的数据:hello 你好7
+[INFO] [1724665784.940449]: 写出的数据:hello 你好8
+[INFO] [1724665785.939816]: 写出的数据:hello 你好9
+[INFO] [1724665786.939942]: 写出的数据:hello 你好10
+```
+
+```
+rostopic echo chatter_p
+data: !!python/str "hello \u4F60\u597D10"
+---
+```
+
+#### 回旋函数
+
+```python
+rospy.spin()
+```
+
+#### 时间
+
+```python
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+import rospy
+
+"""
+需求1：获取当前时刻 + 设置指定时刻
+需求2：程序停顿执行5秒
+需求3：已知程序开始时刻和运行时间，求运行结束时刻
+需求4：定时器，每隔1秒钟，在控制台输出一段文本
+
+"""
+def doMsg(event):
+    rospy.loginfo("+++++++++++")
+    rospy.loginfo("调用回调函数的时刻:%.2f",event.current_real.to_sec())
+
+if __name__ == "__main__":
+    #-----------------------------------------------------------------------------------
+    # 需求1：获取当前时刻 + 设置指定时刻
+    rospy.init_node("hello_time")
+    #获取时刻
+    #获取now() 被调用的时刻，并封装成对象
+    #即距离参考点 1970.01.01 00：00：00的时间，中国+8h
+    now = rospy.Time.now()  
+    rospy.loginfo("当前时刻：%.2f",now.to_sec())
+    rospy.loginfo("当前时刻：%d",now.secs)
+    # [INFO] [1724668296.301696]: 当前时刻：1724668296.30
+    # [INFO] [1724668296.303739]: 当前时刻：1724668296    
+
+    #设置时刻
+    #将一个时间封装成Time对象，距离参考点过去了x秒
+    time1 = rospy.Time(100.5) #秒
+    time2 = rospy.Time(100,1e9) #秒，纳秒
+    rospy.loginfo("当前时刻：%.2f",time1.to_sec())
+    rospy.loginfo("当前时刻：%.2f",time2.to_sec())
+    # [INFO] [1724672445.568729]: 当前时刻：100.50
+    # [INFO] [1724672445.569474]: 当前时刻：101.00
+
+    #从某个时间值(可以是变量)，获取时间对象
+    time3 = rospy.Time.from_sec(210.12)
+    rospy.loginfo("当前时刻：%.2f",time3.to_sec())
+    # [INFO] [1724672548.787859]: 当前时刻：210.12
+
+    #--------------------------------------------------------------------------------
+    #需求2：程序停顿执行5秒
+    rospy.loginfo("-----休眠前-----")
+    # 1.封装一个持续时间对象（5秒）
+    du = rospy.Duration(5,1e9)#秒，纳秒
+    # 2.再将持续时间休眠
+    #du.sleep()异常
+    # rospy.sleep(du)
+    rospy.loginfo("-----休眠后-----")
+    # [INFO] [1724672912.190349]: -----休眠前-----
+    # 等待6秒
+    # [INFO] [1724672918.198098]: -----休眠后-----
+
+    #-----------------------------------------------------------------------------
+    #需求3：已知程序开始时刻和运行时间，求运行结束时刻
+    #1.获取一个时刻t1
+    t1 = rospy.Time.now()
+    #2.设置一个持续时间du1
+    du1 = rospy.Duration(5)
+    #3.结束时刻 t2 = t1 + du1
+    t2 = t1 + du1
+    rospy.loginfo("开始时刻：%.2f",t1.to_sec())
+    rospy.loginfo("结束时刻：%.2f",t2.to_sec())
+    # [INFO] [1724673249.438090]: 开始时刻：1724673249.44
+    # [INFO] [1724673249.438933]: 结束时刻：1724673254.44
+    t3 = t1 - du1
+    rospy.loginfo("时刻与时间减法：%.2f",t3.to_sec())
+    #[INFO] [1724673618.295816]: 时刻与时间减法：1724673613.29
+    # t4 = t1 + t2
+    # rospy.loginfo("时刻与时刻加法：%.2f",t4.to_sec())#不行
+    t5 = t1 - t2
+    rospy.loginfo("时刻与时刻减法：%.2f",t5.to_sec())
+    # [INFO] [1724673791.624368]: 时刻与时刻减法：-5.00
+    du2 = du1 + du
+    rospy.loginfo("时间与时间加法：%.2f",du2.to_sec())
+    # [INFO] [1724673875.693536]: 时间与时间加法：11.00   
+    du3 = du2 - du1
+    rospy.loginfo("时间与时间减法：%.2f",du3.to_sec())
+    # [INFO] [1724673934.050527]: 时间与时间减法：6.00
+
+    #--------------------------------------------------------------------------------------
+    """
+    需求4：定时器，每隔1秒钟，在控制台输出一段文，类似于
+
+    rate = rospy.Rate(1)
+    while not rospy.is_shutdown():
+        rate.sleep() #休眠
+        rospy.loginfo("+++++++++++++++")
+    """
+    """
+    rospy.Timer(self, period, callback, oneshot=False, reset=False)
+        @param period: desired period between callbacks
+        @type  period: rospy.Duration
+        @param callback: callback to be called
+        @type  callback: function taking rospy.TimerEvent
+        @param oneshot: if True, fire only once, otherwise fire continuously until shutdown is called [default: False]
+        @type  oneshot: bool
+        @param reset: if True, timer is reset when rostime moved backward. [default: False]
+        @type  reset: bool
+    """
+    # timer = rospy.Timer(rospy.Duration(2),doMsg)#每隔两秒，运行一次doMsg函数
+    # rospy.spin() #重要
+    # # [INFO] [1724675054.027888]: +++++++++++
+    # # [INFO] [1724675056.024945]: +++++++++++
+    # # [INFO] [1724675058.027757]: +++++++++++
+
+    # oneshot
+    # timer = rospy.Timer(rospy.Duration(2),doMsg,True)#只运行一次doMsg
+    # rospy.spin() #重要
+    # # [INFO] [1724675263.437060]: +++++++++++
+
+    #获取回调函数运行时刻
+    timer = rospy.Timer(rospy.Duration(2),doMsg)#每隔两秒，运行一次doMsg函数
+    rospy.spin() #重要
+    # [INFO] [1724675836.166313]: +++++++++++
+    # [INFO] [1724675836.167802]: 调用回调函数的时刻:1724675836.17
+    # [INFO] [1724675838.166007]: +++++++++++
+    # [INFO] [1724675838.167514]: 调用回调函数的时刻:1724675838.17
+
+```
+
+#### 关闭节点
+
+```python
+rospy.is_shutdown()
+#判断节点是否关闭，如果关闭，返回ture
+
+rospy.on_shutdown(回调函数)
+#节点关闭过程中，执行回调函数
+
+rospy.signal_shutdown("提示信息：关闭节点")
+#关闭节点
+```
+
+实操
+
+```python
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+import rospy
+from std_msgs.msg import String
+
+def cb():
+    rospy.loginfo("节点正在被关闭.....")
+
+if __name__ == "__main__":
+    #2.初始化 ROS 节点:命名(唯一)
+    rospy.init_node("talker_p",anonymous=True)
+    #3.实例化 发布者 对象
+    pub = rospy.Publisher("chatter_p",String,queue_size=10,latch=True)
+    #4.组织被发布的数据，并编写逻辑发布数据
+    msg = String()  #创建 msg 对象
+    msg_front = "hello 你好"
+    count = 0  #计数器 
+    # 设置循环频率
+    rate = rospy.Rate(1)
+    rospy.sleep(3)  #延迟3秒发送数据，防止订阅方接收不到
+    while not rospy.is_shutdown():
+        count += 1
+        if count <= 3:
+            #拼接字符串
+            msg.data = msg_front + str(count)
+            pub.publish(msg)
+            rate.sleep()
+            rospy.loginfo("写出的数据:%s",msg.data)
+        else:
+            #关闭节点
+            rospy.on_shutdown(cb)
+            rospy.signal_shutdown("提示信息：关闭节点")           
+```
+
+```
+rosrun plumbing_apis demo01_apis_pub_p.py 
+[INFO] [1724727968.211850]: 写出的数据:hello 你好1
+[INFO] [1724727969.214033]: 写出的数据:hello 你好2
+[INFO] [1724727970.214050]: 写出的数据:hello 你好3
+[INFO] [1724727970.215849]: 节点正在被关闭.....
+```
+
+#### 日志输出
+
+```python
+#! /usr/bin/env python
+#-*- coding:utf-8 -*-
+import rospy
+
+if __name__ == "__main__":
+    #演示日志函数
+    rospy.init_node("hello_log")
+
+    rospy.logdebug("debug消息")	#不会输出
+    rospy.loginfo("info消息")				#默认白色字体
+    rospy.logwarn("warn消息")			#默认黄色字体
+    rospy.logerr("error消息")				#默认红色字体
+    rospy.logfatal("fatal消息")			#默认红色字体
+```
+
+```shell
+rosrun plumbing_apis demo03_apis_log_p.py 
+[INFO] [1724728506.644167]: info消息
+[WARN] [1724728506.645217]: warn消息
+[ERROR] [1724728506.646050]: error消息
+[FATAL] [1724728506.646829]: fatal消息
+```
+
+### 3.3头文件与源文件
+
+#### 头文件的调用
+
+需求：设计头文件，源文件调用被设计的头文件
+
+流程：
+
+> 1.编写头文件
+> 2.编写源文件
+> 3.编辑配置文件，编译并执行
+
+编写头文件
+
+右击ws/src，创建功能包，包名：plumbing_head，依赖：roscpp rospy std_msgs
+
+include中，新建头文件hello.h
+
+```cpp
+#ifndef _HELLO_H
+#define _HELLO_H    //如果没有声明_HELLO_H，重新声明
+
+/*
+声明 namespace
+        |-- class
+            |-- run
+*/
+
+namespace hello_ns{
+
+    class MyHello{
+
+    public:
+        void run();
+    };
+
+}
+
+#endif
+```
+
+配置.vscode/c_cpp_properties.json
+
+```json
+"includePath": [
+        "/home/book/ws/src/plumbing_head/include/**"
+      ],
+```
+
+src中，新建hello.cpp
+
+```cpp
+#include "ros/ros.h"
+#include "plumbing_head/hello.h"
+
+namespace hello_ns {
+
+    void MyHello::run(){
+        ROS_INFO("run 函数执行中");
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    setlocale(LC_ALL,"");
+    ros::init(argc,argv,"hello_head");
+    hello_ns::MyHello myhello;
+    myhello.run();
+    return 0;
+}
+```
+
+配置cmakelists
+
+```cmake
+include_directories(
+include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(hello src/hello.cpp)
+
+add_dependencies(hello ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+target_link_libraries(hello
+  ${catkin_LIBRARIES}
+)
+```
+
+编译并执行
+
+```shell
+roscore
+```
+
+```shell
+rosrun plumbing_head hello
+[ INFO] [1724730532.958943114]: run 函数执行中
+```
+
+#### 自定义源文件调用
+
+需求：设计头文件与源文件，可执行源文件包含头文件
+
+流程：
+
+> 1.编写头文件
+> 2.编写源文件
+> 3.编写可执行文件
+> 4.编辑配置文件并执行
+
+新建功能包：plumbing_head_src，依赖：roscpp rospy std_msgs
+
+1.编写头文件；include中新建hello.h
+
+```cpp
+#ifndef _HELLO_H
+#define _HELLO_H    //如果没有声明_HELLO_H，重新声明
+
+/*
+声明 namespace
+        |-- class
+            |-- run
+*/
+
+namespace hello_ns{
+    class MyHello{
+    public:
+        void run();
+    };
+}
+
+#endif
+```
+
+2.编写源文件；src中新建hello.cpp
+
+```cpp
+#include "plumbing_head_src/hello.h"
+#include "ros/ros.h"
+
+namespace hello_ns{
+    void MyHello::run(){
+        ROS_INFO("源文件中的run函数...");
+    }
+}
+```
+
+3.编写可执行文件；src中新建use_hello.cpp
+
+```cpp
+#include "ros/ros.h"
+#include "plumbing_head_src/hello.h"
+
+int main(int argc, char *argv[])
+{
+    setlocale(LC_ALL,"");
+    ros::init(argc,argv,"hello_head_src");
+
+    hello_ns::MyHello myhello;
+    myhello.run();
+
+    return 0;
+}
+```
+
+4.编辑cmakelists文件并执行
+
+头文件与源文件：
+
+```cmake
+#包含头文件目录：自定义的头文件目录，ROS自带的头文件目录
+include_directories(
+include
+  ${catkin_INCLUDE_DIRS}
+)
+
+#生成head_src.a静态库，用于后面编译
+add_library(head_src
+  include/${PROJECT_NAME}/hello.h
+  src/hello.cpp
+)
+
+#确保在构建head_src目标之前，其他必要目标已构建完成
+add_dependencies(head_src ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+# 将catkin库文件，链接到目标库文件head_src
+target_link_libraries(head_src
+  ${catkin_LIBRARIES}
+)
+```
+
+可执行文件：
+
+```cmake
+# 编译use_hello.cpp生成可执行文件use_hello 
+add_executable(use_hello src/use_hello.cpp)
+
+#确保在构建use_hello 目标之前，其他必要目标已构建完成
+add_dependencies(use_hello ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+#这里的链接库  要包含之前生成的	head_src
+#将head_src、${catkin_LIBRARIES}动态库文件链接到可执行文件use_hello
+target_link_libraries(use_hello
+  head_src
+  ${catkin_LIBRARIES}
+)
+```
+
+编译并执行
+
+```
+rosrun plumbing_head_src use_hello
+[ INFO] [1724755000.792012363]: 源文件中的run函数...
+```
+
+### 3.4 Python模块导入
+
+需求：新建A和UseA文件，将A导入UseA，并使用A
+
+scripts中新建tools.py
+
+```python
+#! /usr/bin/env python
+num = 100
+```
+
+修改之前的pub.py
+
+```python
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+
+#1.导包 
+import rospy
+from std_msgs.msg import String
+import tools#--------------------------------------------------------------
+
+if __name__ == "__main__":
+    #2.初始化 ROS 节点:命名(唯一)
+    rospy.init_node("talker_p")
+    rospy.loginfo("%d",tools.num)#--------------------------------------
+    #3.实例化 发布者 对象
+    pub = rospy.Publisher("chatter_p",String,queue_size=10)
+    #4.组织被发布的数据，并编写逻辑发布数据
+    msg = String()  #创建 msg 对象
+    msg_front = "hello 你好"
+    count = 0  #计数器 
+    # 设置循环频率
+    rate = rospy.Rate(1)
+    rospy.sleep(3)  #延迟3秒发送数据，防止订阅方接收不到
+    while not rospy.is_shutdown():
+
+        #拼接字符串
+        msg.data = msg_front + str(count)
+
+        pub.publish(msg)
+        rate.sleep()
+        rospy.loginfo("写出的数据:%s",msg.data)
+        count += 1
+```
+
+添加权限，修改cmakelists
+
+```
+chmod +x *.py
+```
+
+```cmake
+catkin_install_python(PROGRAMS
+  scripts/pub.py
+  scripts/tools.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+```
+
+编译并运行
+
+```shell
+rosrun demo01 pub.py
+[INFO] [1724756670.948273]: 100
+[INFO] [1724756673.953366]: 写出的数据:hello 你好0
+[INFO] [1724756674.955365]: 写出的数据:hello 你好1
+。。。。。。
+```
+
+## 第四章 运行管理
+
+如何关联不同功能包？	元功能包
+
+如何同时启动繁多的节点？		launch文件
+
+功能包、节点、话题、参数重名如何解决？		进行相关设置
+
+不同主机上的节点如何通信？		分布式通信
+
+### 4.1 元功能包
+
+将功能包打包成元功能包(MetaPackage)，实现多功能一起调用
+
+创建元功能包实操
+
+需求：将demo01、plumbing_server_client、plumbing_param_server功能包打包成元功能包plumbing_my
+
+右击ws/src，新建功能包，名称plumbing_my，依赖无，按回车即可
+
+修改package.xml
+
+```xml
+<!--   元功能包声明依赖的功能包 -->
+  <exec_depend>demo01</exec_depend>
+  <exec_depend>plumbing_server_client</exec_depend>
+  <exec_depend>plumbing_param_server</exec_depend>
+
+  <!-- The export tag contains other, unspecified, tags -->
+  <!-- 声明一个标签 -->
+  <export>
+    <metapackage />
+  </export>
+```
+
+修改cmakelists
+
+```cmake
+cmake_minimum_required(VERSION 3.0.2)
+project(plumbing_my)
+find_package(catkin REQUIRED)
+catkin_metapackage()	#添加这一行，后面删干净,不可以换行
+```
+
+### 4.2 launch文件
+
+应用场景：同时启动多个节点
+
+需求：同时启动乌龟gui和键盘操控节点
+
+右击ws/src，创建功能包 launch01_basic，添加依赖包：roscpp rospy std_msgs turtlesim
+
+右击launch01_basic，新建文件夹launch，其下新建文件start_turtle.launch
+
+```xml
+<launch>
+    <!-- 子级标签：启动的节点 -->
+    <!-- node pkg="功能包" type="节点类型" name="节点名称" output="日志输出目标" -->
+    <!-- 乌龟gui节点 -->
+    <node pkg="turtlesim" type="turtlesim_node" name="my_turtle" output="screen"/>
+    <!-- 键盘控制节点 -->
+    <node pkg="turtlesim" type="turtle_teleop_key" name="my_key" output="screen"/>
+</launch>
+```
+
+运行
+
+```shell
+roslaunch launch01_basic start_turtle.launch
+# 会自动启动roscore
+```
+
+**文件标签语法**
+
+#### launch
+
+`<launch>`标签是所有 launch 文件的根标签，充当其他标签的容器
+
+1.属性
+
+- `deprecated = "弃用声明"`
+
+    告知用户当前 launch 文件已经弃用
+
+2.子级标签
+
+所有其它标签都是launch的子级
+
+```xml
+<launch deprecated="此文件已过时，不建议使用">
+    <!-- 子级标签：启动的节点 -->
+    <!-- node pkg="功能包" type="节点类型" name="节点名称" output="日志输出目标" -->
+    <!-- 乌龟gui节点 -->
+    <node pkg="turtlesim" type="turtlesim_node" name="my_turtle" output="screen"/>
+    <!-- 键盘控制节点 -->
+    <node pkg="turtlesim" type="turtle_teleop_key" name="my_key" output="screen"/>
+</launch>
+```
+
+```shell
+roslaunch launch01_basic start_turtle.launch
+# 节点能正常启动，但有警告
+# WARNING: [/home/book/ws/src/launch01_basic/launch/start_turtle.launch] DEPRECATED: 此文件已过时，不建议使用
+```
+
+#### node
+
+`<node>`标签用于指定 ROS 节点，是最常见的标签，需要注意的是: roslaunch 命令不能保证按照 node 的声明顺序来启动节点(节点的启动是多进程的)
+
+1.属性
+
+- pkg="包名"
+
+    节点所属的包
+
+- type="nodeType"
+
+    节点类型(与之相同名称的可执行文件)
+
+- name="nodeName"
+
+    节点名称(在 ROS 网络拓扑中节点的名称)
+
+- args="xxx xxx xxx" (可选)
+
+    将参数传递给节点
+
+- machine="机器名"
+
+    在指定机器上启动节点
+
+- respawn="true | false" (可选)
+
+    重新产卵，如果节点退出，是否自动重启；实践
+
+    ```xml
+    <node pkg="turtlesim" type="turtlesim_node" name="my_turtle" output="screen" respawn="true" />
+    ```
+
+    ```shell
+    #启动节点，关闭乌龟gui，系统会自动重启乌龟gui
+    ```
+
+- respawn_delay=" N" (可选)
+
+    如果 respawn 为 true, 那么延迟 N 秒后启动节点
+
+- required="true | false" (可选)
+
+    该节点是否必须，如果为 true,那么如果该节点退出，将杀死整个 roslaunch;实践
+
+    ```xml
+    <node pkg="turtlesim" type="turtlesim_node" name="my_turtle" output="screen" required="true" />
+    ```
+
+    ```shell
+    #启动节点，关闭乌龟gui，系统会关闭所有节点
+    ```
+
+- ns="xxx" (可选)
+
+    在指定命名空间 xxx 中启动节点
+
+    ```xml
+    <node pkg="turtlesim" type="turtlesim_node" name="my_turtle" output="screen" ns="hello"/>
+    ```
+
+    ```shell
+    #启动节点，查看节点列表
+    rosnode list
+    /hello/my_turtle
+    ```
+
+- clear_params="true | false" (可选)
+
+    在启动前，删除节点的私有空间的所有参数，慎用！
+
+- output="log | screen" (可选)
+
+    日志发送目标，可以设置为 log 日志文件，或 screen 屏幕,默认是 log
+
+2.子级标签
+
+- env 环境变量设置
+- remap 重映射节点名称
+- rosparam 参数设置
+- param 参数设置
+
+#### include
+
+`include`标签用于将另一个 xml 格式的 launch 文件导入到当前文件
+
+1.属性
+
+- file="$(find 包名)/xxx/xxx.launch"
+
+    要包含的文件路径
+
+- ns="xxx" (可选)
+
+    在指定命名空间导入文件
+
+2.子级标签
+
+- env 环境变量设置
+- arg 将参数传递给被包含的文件
+
+实践：ws/src/launch中新建start_turtle_use.launch
+
+```xml
+<!-- 需要复用start_turtle.launch文件 -->
+<launch>
+    <!-- 包含 -->
+    <include file="$(find launch01_basic)/launch/start_turtle.launch" />
+    <!-- 其他节点 -->
+</launch>
+```
+
+运行：
+
+```shell
+roslaunch launch01_basic start_turtle_use.launch 
+```
+
+#### remap
+
+用于话题重命名
+
+1.属性
+
+- from="xxx"
+
+    原始话题名称
+
+- to="yyy"
+
+    目标名称
+
+实践：安装更好的键盘控制功能包
+
+```
+sudo apt-get install ros-melodic-teleop-twist-keyboard
+```
+
+运行
+
+```
+rosrun teleop_twist_keyboard teleop_twist_keyboard.py
+```
+
+运行乌龟gui+原始键盘控制
+
+```
+roslaunch launch01_basic start_turtle.launch
+```
+
+查看话题
+
+```shell
+rostopic list
+/cmd_vel						#高级键盘节点
+/turtle1/cmd_vel		#乌龟节点
+```
+
+发现话题不一样，不能控制，将乌龟话题改成/cmd_vel，start_turtle.launch
+
+```xml
+<launch deprecated="此文件已过时，不建议使用">
+    <!-- 子级标签：启动的节点 -->
+    <!-- node pkg="功能包" type="节点类型" name="节点名称" output="日志输出目标" -->
+    <!-- 乌龟gui节点 -->
+    <node pkg="turtlesim" type="turtlesim_node" name="my_turtle" output="screen">
+        <remap from="/turtle1/cmd_vel" to="/cmd_vel" />
+    </node>
+    <!-- 老键盘控制节点 -->
+    <node pkg="turtlesim" type="turtle_teleop_key" name="my_key" output="screen"/>
+</launch>
+```
+
+测试
+
+```
+rosrun teleop_twist_keyboard teleop_twist_keyboard.py
+```
+
+```
+roslaunch launch01_basic start_turtle.launch
+```
+
+可以用高级键盘控制了，原始键盘无法控制（原始键盘话题：/turtle1/cmd_vel）
+
+#### param
+
+`<param>`标签主要用于在参数服务器上设置参数，参数源可以在标签中通过 value 指定，也可以通过外部文件加载，在`<node>`标签中时，相当于私有命名空间（参数名称加前缀）。
+
+1.属性
+
+- name="命名空间/参数名"
+
+    参数名称，可以包含命名空间
+
+- value="xxx" (可选)
+
+    定义参数值，如果此处省略，必须指定外部文件作为参数源
+
+- type="str | int | double | bool | yaml" (可选)
+
+    指定参数类型，如果未指定，roslaunch 会尝试确定参数类型，规则如下:
+
+    - 如果包含 '.' 的数字解析未浮点型，否则为整型
+    - "true" 和 "false" 是 bool 值(不区分大小写)
+    - 其他是字符串
+
+实践,start_turtle.launch
+
+```xml
+<launch>
+    <!-- param 使用：向参数服务器设置参数 -->
+    <!-- 格式1：launch下，node外 -->
+    <param name="param_A" type="int" value="100" />
+    <node pkg="turtlesim" type="turtlesim_node" name="my_turtle" output="screen">
+        <remap from="/turtle1/cmd_vel" to="/cmd_vel" />
+        <!-- 格式2：node下 -->
+        <param name="param_B" type="double" value="3.14" />
+    </node>
+    <!-- 老键盘控制节点 -->
+    <node pkg="turtlesim" type="turtle_teleop_key" name="my_key" output="screen"/>
+</launch>
+```
+
+```shell
+roslaunch launch01_basic start_turtle.launch 
+```
+
+```shell
+book@100ask:~$ rosparam list
+/my_turtle/param_B
+/param_A
+book@100ask:~$ rosparam get /param_A
+100
+book@100ask:~$ rosparam get /my_turtle/param_B
+3.14
+```
+
+#### rosparam
+
+`<rosparam>`标签可以从 YAML 文件导入参数，或将参数导出到 YAML 文件，也可以用来删除参数，`<rosparam>`标签在`<node>`标签中时被视为私有（参数名称加前缀）。
+
+1.属性
+
+- command="load | dump | delete" (可选，默认 load)
+
+    加载、导出或删除参数
+
+- file="$(find xxxxx)/xxx/yyy...."
+
+    加载或导出到的 yaml 文件
+
+- param="参数名称"
+
+- ns="命名空间" (可选)
+
+**加载参数**
+
+launch文件夹中，新建params.yaml
+
+```yaml
+bg_R: 100
+bg_G: 50
+bg_B: 255
+```
+
+start_turtle.launch 
+
+```xml
+<launch>
+    <!-- rosparam使用：操作参数服务器数据 -->
+    <!-- 加载参数 -->
+    
+    <!-- 格式1：launch 下,node 外 -->
+    <rosparam command="load" file="$(find launch01_basic)/launch/params.yaml" />
+    
+    <node pkg="turtlesim" type="turtlesim_node" name="my_turtle" output="screen">
+        <remap from="/turtle1/cmd_vel" to="/cmd_vel" />        
+        <!-- 格式2：node下 -->
+    	<rosparam command="load" file="$(find launch01_basic)/launch/params.yaml" />
+    </node>
+    
+    <!-- 老键盘控制节点 -->
+    <node pkg="turtlesim" type="turtle_teleop_key" name="my_key" output="screen"/>
+</launch>
+```
+
+运行并查看参数
+
+```shell
+roslaunch launch01_basic start_turtle.launch 
+```
+
+```shell
+book@100ask:~/ws$ rosparam list
+/bg_B
+/bg_G
+/bg_R
+/my_turtle/background_b
+/my_turtle/background_g
+/my_turtle/background_r
+/my_turtle/bg_B
+/my_turtle/bg_
+/my_turtle/bg_R
+/rosdistro
+/roslaunch/uris/host_100ask__34033
+/rosversion
+/run_id
+
+book@100ask:~/ws$ rosparam get /bg_R
+100
+book@100ask:~/ws$ rosparam get /my_turtle/bg_R
+100
+```
+
+导出、删除参数
+
+系统优先导出、删除参数，再运行其他节点；所有要单独运行
+
+launch文件夹中新建
+
+dump.launch
+
+```shell
+<launch>
+    <!-- 导出参数 -->
+    <rosparam command="dump" file="$(find launch01_basic)/launch/params_out.yaml" />
+    <!-- 删除参数 -->
+    <rosparam command="delete" param="bg_B" />
+</launch>
+```
+
+先运行设置参数的节点
+
+```
+roslaunch launch01_basic start_turtle.launch 
+```
+
+在导出、删除参数
+
+```
+roslaunch launch01_basic dump.launch 
+```
+
+结果：bg_B被删除，生成的params_out.yaml文件：
+
+```yaml
+bg_B: 255
+bg_G: 50
+bg_R: 100
+my_turtle: {background_b: 255, background_g: 86, background_r: 69, bg_B: 255, bg_G: 50,
+  bg_R: 100}
+rosdistro: 'melodic
+
+  '
+roslaunch:
+  uris: {host_100ask__34033: 'http://100ask:34033/', host_100ask__38167: 'http://100ask:38167/'}
+rosversion: '1.14.13
+
+  '
+run_id: 41cbdd6e-65f5-11ef-947b-000c294e710c
+```
+
+#### group
+
+`<group>`标签可以对节点分组，具有 ns 属性，可以让节点归属某个命名空间
+
+避免重名问题，易于管理节点
+
+1.属性
+
+- ns="名称空间" (可选)
+
+- clear_params="true | false" (可选)
+
+    启动前，是否删除组名称空间的所有参数(慎用....此功能危险)
+
+2.子级标签
+
+- 除了launch 标签外的其他标签
+
+实践：launch文件夹新建turtles.launch
+
+```xml
+<launch>
+    <!-- 启动两对乌龟gui 与 键盘控制节点 -->
+    
+    <group ns="first">
+        <node pkg="turtlesim" type="turtlesim_node" name="my_turtle" output="screen"/>
+        <node pkg="turtlesim" type="turtle_teleop_key" name="my_key" output="screen"/>
+    </group>
+
+    <group ns="second">
+        <node pkg="turtlesim" type="turtlesim_node" name="my_turtle" output="screen"/>
+        <node pkg="turtlesim" type="turtle_teleop_key" name="my_key" output="screen"/>
+    </group>
+
+</launch>
+```
+
+运行与测试
+
+```shell
+roslaunch launch01_basic turtles.launch 
+# 出现两套 龟和键盘
+```
+
+```
+rosnode list
+
+/first/my_key
+/first/my_turtle
+/rosout
+/second/my_key
+/second/my_turtle
+```
+
+#### arg
+
+`<arg>`标签是用于动态传参，类似于函数的参数，可以增强launch文件的灵活性
+
+1.属性
+
+- name="参数名称"
+
+- default="默认值" (可选)
+
+- value="数值" (可选)
+
+    不可以与 default 并存
+
+- doc="描述"
+
+    参数说明
+
+launch文件夹中新建arg.launch
+
+```
+<launch>
+    <!-- 需求：演示arg的使用，设置多个同值参数（小车长度） -->
+    <!-- <param name="A" value="0.5" />
+    <param name="B" value="0.5" />
+    <param name="C" value="0.5" /> -->
+
+    <arg name="car_length" default="0.5" />
+    <param name="A" value="$(arg car_length)" />
+    <param name="B" value="$(arg car_length)" />
+    <param name="C" value="$(arg car_length)" />
+
+</launch>
+```
+
+运行与测试
+
+```
+ roslaunch launch01_basic arg.launch 
+```
+
+```shell
+book@100ask:~$ rosparam list
+/A
+/B
+/C
+/rosdistro
+/roslaunch/uris/host_100ask__44019
+/rosversion
+/run_id
+book@100ask:~$ rosparam get A
+0.5
+book@100ask:~$ rosparam get B
+0.5
+
+#动态传参
+roslaunch launch01_basic arg.launch car_length:=0.6
+
+book@100ask:~/ws$ rosparam get A
+0.6
+book@100ask:~/ws$ rosparam get B
+0.6
 ```
 
