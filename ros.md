@@ -5343,3 +5343,250 @@ book@100ask:~/ws$ rosparam get B
 0.6
 ```
 
+### 4.3 工作空间覆盖
+
+解决功能包重名问题
+
+工作空间覆盖：指的是不同工作空间中，存在重名的功能包情形
+
+实验：
+
+创建两个工作空间：demo01_ws,demo02_ws
+
+分别创建功能包turtlesim，cpp文件：hello_ws1,hello_ws2
+
+cpp文件作用，分别输出demo01_ws和demo02_ws
+
+配置.bashrc文件
+
+```shell
+source ~/demo02_ws/devel/setup.bash
+source ~/demo01_ws/devel/setup.bash
+```
+
+终端运行
+
+```shell
+book@100ask:~$ rosrun turtlesim hello_ws1 
+[ INFO] [1725277994.602680084]: demo01_ws
+book@100ask:~$ echo $ROS_PACKAGE_PATH 
+/home/book/demo01_ws/src:/home/book/ws/src:/opt/ros/melodic/share
+book@100ask:~$ rosrun turtlesim hello_ws2
+[rosrun] Couldn't find executable named hello_ws2 below /home/book/demo01_ws/src/turtlesim
+```
+
+source两次后，使用最后一次source，前一次被覆盖
+
+删除demo01_ws,demo02_ws，删除ws的devel和build重新编译，重启ubuntu；方可用官方功能包
+
+### 4.4 节点名称重名
+
+节点重名，在运行时，会导致节点关闭
+
+解决方法：加前缀（命名空间）,起别名（名称重映射）
+rosrun启动时、launch文件中、编码时，起别名或者加前缀；
+
+#### rosrun
+
+案例：启动多个乌龟
+
+1.加前缀（命名空间）
+
+```shell
+# 语法
+rosrun 包名 节点名 __ns:=前缀
+```
+
+```
+rosrun turtlesim turtlesim_node __ns:=ns01
+```
+
+```
+rosrun turtlesim turtlesim_node __ns:=ns02
+```
+
+```
+rosnode list
+/ns01/turtlesim
+/ns02/turtlesim
+/rosout
+/turtlesim
+```
+
+2.改名字
+
+```shell
+#语法
+rosrun 包名 节点名 __name:其他名字
+```
+
+```
+rosrun turtlesim turtlesim_node __name:=mike
+```
+
+```
+rosrun turtlesim turtlesim_node __name:=jerry
+```
+
+```shell
+rosnode list
+/jerry
+/mike
+/rosout
+/turtlesim
+```
+
+或者
+
+```shell
+rosrun turtlesim turtlesim_node /turtlesim:=t1		#不适用于python
+```
+
+```
+rosnode list
+/rosout
+/t1
+```
+
+3.混合
+
+```shell
+#语法
+rosrun 包名 节点名 __name:其他名字 __ns:=命名空间
+```
+
+```
+rosrun turtlesim turtlesim_node __name:=mike __ns:=ns01
+```
+
+```
+rosrun turtlesim turtlesim_node __name:=jerry __ns:=ns02
+```
+
+```
+rosnode list
+/ns01/mike
+/ns02/jerry
+/rosout
+/turtlesim
+```
+
+4.使用环境变量设置命名空间
+
+```
+export ROS_NAMESPACE=ns01
+rosrun turtlesim turtlesim_node
+```
+
+```
+rosnode list
+/ns01/turtlesim
+```
+
+#### launch
+
+创建功能包：rename01_node
+添加依赖：roscpp rospy std_msgs
+此功能包下新建文件夹：launch；
+此文件夹下新建文件：start_turtle.launch
+
+```xml
+<!-- 启动多个乌龟节点 -->
+<launch>
+    <node pkg="turtlesim" type="turtlesim_node" name="tuetlesim"  />
+    <!--名称重映射-->
+    <node pkg="turtlesim" type="turtlesim_node" name="t1"  />
+    <!-- 命名空间 -->
+    <node pkg="turtlesim" type="turtlesim_node" name="tuetlesim"  ns="ns01" />
+    <!-- 命名空间 + 名称重映射 -->
+    <node pkg="turtlesim" type="turtlesim_node" name="t2"  ns="ns02" />
+
+</launch>
+```
+
+编译后测试
+
+```
+roslaunch rename01_node start_turtle.launch 
+```
+
+```shell
+rosnode list
+/ns01/tuetlesim
+/ns02/t2
+/rosout
+/t1
+/tuetlesim
+```
+
+#### 程序设置
+
+cpp
+
+```cpp
+ros::init(argc,argv,"zhangsan",ros::init_options::AnonymousName);	//节点后加时间戳，重命名
+```
+
+或者
+
+```cpp
+  std::map<std::string, std::string> map;
+  map["__ns"] = "ns01";
+  ros::init(map,"node01");		//命名空间
+```
+
+### 4.5 话题名称设置
+
+案例：
+
+```
+rosrun teleop_twist_keyboard teleop_twist_keyboard.py
+```
+
+```
+rosrun turtlesim turtlesim_node 
+```
+
+发现不能用键盘控制乌龟运动，原因：话题名称不同
+
+```shell
+rostopic list
+/cmd_vel		#键盘
+/turtle1/cmd_vel		#小乌龟
+```
+
+#### rosrun
+
+```
+rosrun turtlesim turtlesim_node 
+```
+
+```shell
+ rosrun teleop_twist_keyboard  teleop_twist_keyboard.py /cmd_vel:=/turtle1/cmd_vel
+```
+
+此时可以控制乌龟运动
+
+```shell
+rostopic list
+/turtle1/cmd_vel		#话题改为相同了
+```
+
+#### launch
+
+创建功能包rename02_topic，添加依赖roscpp ,rospy,std_msgs
+功能包下新建文件start.launch
+
+```xml
+<!-- 高级键盘控制乌龟运动 -->
+<launch>
+    <!-- 将乌龟的话题设置成与键盘控制一致 -->
+    <node pkg="turtlesim" type="turtlesim_node" name="t1">
+        <remap from="/turtle1/cmd_vel" to="/cmd_vel" />
+    </node>
+
+    <!-- 键盘控制节点 -->
+    <node pkg="teleop_twist_keyboard" type="teleop_twist_keyboard.py" name="key" />
+</launch>
+```
+
