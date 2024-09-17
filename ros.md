@@ -302,7 +302,7 @@ kill -9 21526(import的进程)
 
 ## 第一章 文件初始化
 
-**命令窗口快捷键**
+### 终端快捷键
 
 ```
 Alt+Up                          //移动到上面的终端
@@ -3230,7 +3230,7 @@ rosrun plumbing_test test01_pub_twist_p.py
 
 plumbing_test下新建文件夹launch,新建文件start_turtle.launch
 
-```json
+```xml
 <!-- 启动乌龟gui与键盘控制节点 -->
 <launch>
     <!-- 相当于终端同时输入两行命令，并显示到屏幕上 -->
@@ -5588,5 +5588,1661 @@ rostopic list
     <!-- 键盘控制节点 -->
     <node pkg="teleop_twist_keyboard" type="teleop_twist_keyboard.py" name="key" />
 </launch>
+```
+
+运行测试
+
+```
+roslaunch rename02_topic start.launch
+```
+
+```
+rostopic list
+/cmd_vel
+/rosout
+/rosout_agg
+/turtle1/cmd_vel
+/turtle1/color_sensor
+/turtle1/pose
+```
+
+#### 程序设置
+
+话题名称类型：
+
+- 全局(话题参考ROS系统，与节点命名空间平级)
+- 相对(话题参考的是节点的命名空间，与节点名称平级)
+- 私有(话题参考节点名称，是节点名称的子级)
+
+节点名称：
+/命名空间/节点名称	第一个斜杠为根目录
+
+话题名称：
+全局：/话题名称
+相对：/命名空间/话题名称
+私有：/命名空间/节点名称/话题名称
+
+**CPP**
+
+创建功能包rename02_topic，依赖包照常，src中新建topic_name.cpp文件
+
+```cpp
+#include "ros/ros.h"
+#include "std_msgs/String.h"
+/*
+演示不同类型的话题名称设置
+设置话题名称与命名空间
+*/
+int main(int argc, char *argv[])
+{
+    setlocale(LC_ALL,"");
+    ros::init(argc,argv,"topic_name");
+    // ros::NodeHandle nh;
+    //设置不同类型的话题
+    //1.全局--话题名称以“/”开头（也可以设置自己的命名空间），这种情况下和节点（命名空间和名字）无关系
+    // ros::Publisher pub = nh.advertise<std_msgs::String>("/chatter",100);
+    /*
+    rosrun rename02_top topic_name __ns:=xxx
+
+    rosnode list
+    /xxx/topic_name
+
+    rostopic list
+    /chatter
+    */
+
+    // ros::Publisher pub = nh.advertise<std_msgs::String>("/yyy/chatter",100);
+    /*
+    rosrun rename02_top topic_name __ns:=xxx
+
+    rosnode list    
+    /xxx/topic_name
+
+    rostopic list   
+    /yyy/chatter
+    */
+
+    //2.相对    非“/”开头
+    // ros::Publisher pub = nh.advertise<std_msgs::String>("chatter",100);
+    /*
+    rosrun rename02_top topic_name __ns:=xxx
+
+    rosnode list
+    /xxx/topic_name
+
+    rostopic list
+    /xxx/chatter
+    */
+    // ros::Publisher pub = nh.advertise<std_msgs::String>("yyy/chatter",100);
+    /*
+    rosrun rename02_top topic_name __ns:=xxx
+
+    rosnode list
+    /xxx/topic_name
+
+    rostopic list
+    /xxx/yyy/chatter
+    */
+    //3.私有  需要创建新的 ros::NodeHandle nh("~");话题名称在命名空间/节点 的下面
+
+    ros::NodeHandle nh("~");
+    // ros::Publisher pub = nh.advertise<std_msgs::String>("chatter",100);
+    /*
+    rosrun rename02_top topic_name __ns:=xxx
+
+    rosnode list
+    /xxx/topic_name
+
+    rostopic list
+    /xxx/topic_name/chatter
+    */
+    // ros::Publisher pub = nh.advertise<std_msgs::String>("yyy/chatter",100);
+    /*
+    rosrun rename02_top topic_name __ns:=xxx
+
+    rosnode list
+    /xxx/topic_name
+
+    rostopic list
+    /xxx/topic_name/yyy/chatter
+    */
+
+    //有斜杠，用的全局，非私有，权限最高
+    ros::Publisher pub = nh.advertise<std_msgs::String>("/yyy/chatter",100);
+    /*
+    rosrun rename02_top topic_name __ns:=xxx
+    
+    rosnode list
+    /xxx/topic_name
+
+    rostopic list   
+    /yyy/chatter
+    */
+    while (ros::ok())
+    {
+
+    }
+
+    return 0;
+}
+```
+
+Python
+
+新建scripst文件夹，其下新建topic_name_p.py，修改权限，配置cmakelist.txt
+
+```cmake
+catkin_install_python(PROGRAMS
+  scripts/topic_name_p.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+```
+
+topic_name_p.py
+
+```python
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+import rospy
+from std_msgs.msg import String
+
+if __name__ == "__main__":
+    rospy.init_node("hello")
+    """
+    实现不同类型的话题设置
+    """
+    # 1.全局    话题名称以 / 开头
+    # pub = rospy.Publisher("/chatter",String,queue_size=10)
+    '''
+    rosrun rename02_topic topic_name_p.py __ns:=xxx
+
+    rosnode list
+    /xxx/hello
+
+    rostopic list
+    /chatter
+    '''
+    # 2.相对    话题名称无前缀
+    # pub = rospy.Publisher("chatter",String,queue_size=10)
+    """
+    rosrun rename02_topic topic_name_p.py __ns:=xxx
+
+    rosnode list
+    /xxx/hello
+
+    rostopic list
+    /xxx/chatter
+    """
+    # 3.私有    话题名称以 ~ 开头
+    pub = rospy.Publisher("~chatter",String,queue_size=10)
+    """
+    rosrun rename02_topic topic_name_p.py __ns:=xxx
+
+    rosnode list
+    /xxx/hello
+
+    rostopic list
+    /xxx/hello/chatter
+    """
+
+    while not rospy.is_shutdown():
+        pass		#空占位符，没有操作，保证语法通过
+```
+
+### 4.6 参数名称重名
+
+#### rosrun 
+
+```shell
+# 语法：rosrun 包名 节点名称 _参数名:=参数值
+rosrun turtlesim turtlesim_node _radius:=100
+```
+
+```
+rosparam list
+/turtlesim/radius
+
+rosparam get /turtlesim/radius
+100
+```
+
+#### launch
+
+创建功能包rename03_param，新建launch文件夹，新建文件test_param.launch
+
+```xml
+<!-- 设置参数 -->
+<launch>
+    <!-- 全局 -->
+    <param name="radius" value="0.2" />
+    <node pkg="turtlesim" type="turtlesim_node" name="t1" ns="xxx" >
+        <!-- 私有 -->
+        <param name="radius" value="0.08" />
+    </node>        
+</launch>
+```
+
+测试
+
+```
+roslaunch rename03_param test_param.launch 
+```
+
+```
+rosparam list
+/radius
+/xxx/t1/radius
+
+rosparam get /radius
+0.2
+
+rosparam get /xxx/t1/radius
+0.08
+```
+
+#### 程序设置
+
+ **cpp**
+
+param_name.cpp
+
+```cpp
+#include "ros/ros.h"
+
+int main(int argc, char *argv[])
+{
+    ros::init(argc,argv,"hello");
+    ros::NodeHandle nh;
+    /* 
+        使用 ros::param 设置不同类型参数
+    */
+    //全局
+    ros::param::set("/radiusA",100);
+    //相对
+    ros::param::set("radiusA",99);
+    //私有
+    ros::param::set("~radiusA",53);
+
+    return 0;
+}
+```
+
+测试
+
+```
+roscore
+```
+
+```
+cd ws
+rosrun rename03_param param_name __ns:=xxx
+```
+
+```
+rosparam list
+/radiusA
+/xxx/hello/radiusA
+/xxx/radiusA
+
+ rosparam get /radiusA 
+100
+
+rosparam get /xxx/hello/radiusA
+53
+
+rosparam get /xxx/radiusA
+99
+```
+
+**cpp用节点句柄设置参数**
+
+param_name_nh.cpp
+
+```cpp
+#include "ros/ros.h"
+
+int main(int argc, char *argv[])
+{
+    ros::init(argc,argv,"hello");
+    ros::NodeHandle nh;
+    /* 
+        使用 NodeHandle 设置不同类型参数
+    */
+    //全局
+    nh.setParam("/radius_nh_A",4);
+    //相对
+    nh.setParam("radius_nh_B",5);
+    //私有
+    ros::NodeHandle nh_private("~");
+    nh_private.setParam("radius_nh_C",6);
+
+    return 0;
+}
+```
+
+```
+cd ws
+rosrun rename03_param param_name_nh __ns:=xxx
+
+rosparam list
+/radius_nh_A
+/xxx/hello/radius_nh_C
+/xxx/radius_nh_B
+```
+
+**python设置参数**
+
+新建scripts文件夹，其中新建文件param_name_p.py，添加权限，配置cmakelists
+
+```python
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+import rospy
+from std_msgs.msg import String
+if __name__ == "__main__":
+    rospy.init_node("hello")
+    """
+    设置不同类型的参数
+    """
+    # 全局
+    rospy.set_param("/radius_A",1)
+    # 相对
+    rospy.set_param("radius_B",2)
+    # 私有
+    rospy.set_param("~radius_C",3)
+```
+
+测试
+
+```
+cd ws
+rosrun rename03_param param_name_p.py __ns:=xxx
+
+rosparam list
+/radius_A
+/xxx/hello/radius_C
+/xxx/radius_B
+```
+
+### 4.7 分布式通信
+
+一个ROS系统可以为多个节点通信，各个节点可以放置在不同计算机上
+
+要求：所有计算机双向连接，名称能被其他计算机解析
+
+操作：参考赵虚左老师视频
+
+#### **实现**
+
+##### 1.准备
+
+先要保证不同计算机处于同一网络中，最好分别设置固定IP，如果为虚拟机，需要将网络适配器改为桥接模式；
+
+##### 2.配置文件修改
+
+分别修改不同计算机的 /etc/hosts 文件，在该文件中加入对方的IP地址和计算机名:
+
+主机端:
+
+```
+从机的IP    从机计算机名
+```
+
+从机端:
+
+```
+主机的IP    主机计算机名
+```
+
+设置完毕，可以通过 ping 命令测试网络通信是否正常。
+
+> IP地址查看名: ifconfig
+>
+> 计算机名称查看: hostname
+
+##### 3.配置主机IP
+
+配置主机的 IP 地址
+
+~/.bashrc 追加
+
+```
+export ROS_MASTER_URI=http://主机IP:11311
+export ROS_HOSTNAME=主机IP
+```
+
+##### 4.配置从机IP
+
+配置从机的 IP 地址，从机可以有多台，每台都做如下设置:
+
+~/.bashrc 追加
+
+```
+export ROS_MASTER_URI=http://主机IP:11311
+export ROS_HOSTNAME=从机IP
+```
+
+#### **测试**
+
+1.主机启动 roscore(必须)
+
+2.主机启动订阅节点，从机启动发布节点，测试通信是否正常
+
+3.反向测试，主机启动发布节点，从机启动订阅节点，测试通信是否正常
+
+## 第五章 常用组件
+
+- TF坐标变换，不同类型的坐标系之间的转换；实践：小乌龟跟随
+- rosbag 用于录制ROS节点的执行过程并可以重放该过程；
+- rqt 工具箱，集成了多款图形化的调试工具。
+
+### 5.1 TF坐标变换
+
+目的：将不同传感器整合到一个坐标原点
+
+ROS约定坐标系：
+
+![img](pic_linux/右手坐标系.jpg)
+
+tf1已经被启用，目前常用tf2:
+
+tf2_geometry_msgs:可以将ROS消息转换成tf2消息。
+
+tf2: 封装了坐标变换的常用消息。
+
+tf2_ros:为tf2提供了roscpp和rospy绑定，封装了坐标变换常用的API。
+
+#### 坐标msg消息
+
+终端运行，查看消息类型
+
+```shell
+rosmsg info geometry_msgs/PointStamped		#坐标点信息
+
+std_msgs/Header header		#头信息
+  uint32 seq		#序列号，无用
+  time stamp		#时间戳
+  string frame_id		#参考的坐标系
+  
+geometry_msgs/Point point		#点坐标
+  float64 x
+  float64 y
+  float64 z
+```
+
+```shell
+rosmsg info geometry_msgs/TransformStamped 		#坐标系相对位置，信息
+
+std_msgs/Header header		#头信息
+  uint32 seq		#序列号，无用
+  time stamp		#时间戳
+  string frame_id		#本坐标系
+string child_frame_id		#另一个坐标系
+
+geometry_msgs/Transform transform		#描述二者关系
+  geometry_msgs/Vector3 translation			#两坐标原点偏移量
+    float64 x
+    float64 y
+    float64 z
+    
+  geometry_msgs/Quaternion rotation			#偏航俯仰翻滚相对角，用四元数表示
+    float64 x
+    float64 y
+    float64 z
+    float64 w
+```
+
+#### 静态坐标变换
+
+静态坐标变换：两坐标系位置相对固定，如机器人与雷达直接的位置
+
+动态坐标变换：两坐标系位置不相对固定，如手指之间的相对位置
+
+已知雷达相对于主体: x 0.2 y0.0 z0.5。当前雷达检测到一障碍物坐标为 (2.0 3.0 5.0),该障碍物相对于主体的坐标是（2.2,3.0,5.5)
+
+##### cpp
+
+创建功能包tf01_static
+
+添加依赖：tf2、tf2_ros、tf2_geometry_msgs、geometry_msgs、roscpp、 rospy、std_msgs 
+
+创建文件：demo01_static_pub.cpp，配置cmakelist（bulid中：可执行文件、依赖文件、目标链接库）
+
+demo01_static_pub.cpp
+
+```cpp
+#include "ros/ros.h"
+#include "tf2_ros/static_transform_broadcaster.h"       //发布者对象
+#include "geometry_msgs/TransformStamped.h"             //消息数据
+#include "tf2/LinearMath/Quaternion.h"                  //欧拉角转化为四元数
+/*
+需求：发布两个坐标系的相对关系
+
+流程：
+    1.包含头文件
+    2.初始化：设置编码，节点初始化，NodeHandle
+    3.创建发布对象；
+    4.组织被发布的消息
+    5.发布数据；
+    6.spin();
+*/
+int main(int argc, char *argv[])
+{
+    // 2.初始化：设置编码，节点初始化，NodeHandle
+    setlocale(LC_ALL,"");
+    ros::init(argc,argv,"static_pub");
+    ros::NodeHandle nh;
+    // 3.创建发布对象；
+    tf2_ros::StaticTransformBroadcaster pub;
+    // 4.组织被发布的消息
+    geometry_msgs::TransformStamped tfs;
+    tfs.header.stamp = ros::Time::now();
+    tfs.header.frame_id = "base_link";//相对坐标系关系中，被参考的那一个
+    tfs.child_frame_id = "laser";
+    //雷达偏移量
+    tfs.transform.translation.x = 0.2;
+    tfs.transform.translation.y = 0.0;
+    tfs.transform.translation.z = 0.5;
+
+    //雷达角度偏移量，根据欧拉角转换
+    tf2::Quaternion qtn;//创建四元数对象
+    //向该对象设置欧拉角，这个对象可以将欧拉角转化为四元数
+    qtn.setRPY(0,0,0);//翻滚 俯仰 偏航（单位：弧度）
+    tfs.transform.rotation.x = qtn.getX();
+    tfs.transform.rotation.y = qtn.getY();
+    tfs.transform.rotation.z = qtn.getZ();
+    tfs.transform.rotation.w = qtn.getW();
+
+    // 5.发布数据；
+    pub.sendTransform(tfs);
+    // 6.spin();
+    ros::spin();
+    return 0;
+}
+```
+
+测试
+
+```
+rosrun tf01_static demo01_static_pub
+```
+
+```shell
+rostopic echo /tf_static
+transforms: 
+  - 
+    header: 
+      seq: 0
+      stamp: 
+        secs: 1726366143
+        nsecs: 684386653
+      frame_id: "base_link"
+    child_frame_id: "laser"
+    transform: 
+      translation: 
+        x: 0.2
+        y: 0.0
+        z: 0.5
+      rotation: 
+        x: 0.0
+        y: 0.0
+        z: 0.0
+        w: 1.0
+---
+```
+
+可视化坐标系
+
+```shell
+rviz
+# 在启动的 rviz 中设置Fixed Frame 为 base_link;
+# 点击左下的 add 按钮，在弹出的窗口中选择 TF 组件，即可显示坐标关系。
+```
+
+**订阅方**
+
+demo02_static_sub.cpp
+
+```cpp
+#include "ros/ros.h"
+#include "tf2_ros/transform_listener.h"     //创建订阅方对象
+#include "tf2_ros/buffer.h"     //缓存数据到buffer中
+#include "geometry_msgs/PointStamped.h"     //坐标点数据
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"    //tf2坐标消息
+/*
+订阅方：订阅发布的坐标相对关系，传入一个坐标点，调用tf实现转换
+
+流程：
+    1.包含头文件
+    2.编码、初始化、NodeHandle（必须）
+    3.创建订阅对象：负责订阅坐标系相对关系
+    4.组织一个坐标点数据
+    5.转换算法，调用tf内置实现
+    6.输出
+*/
+int main(int argc, char *argv[])
+{
+    // 2.编码、初始化、NodeHandle（必须）
+    setlocale(LC_ALL,"");
+    ros::init(argc,argv,"static_sub");
+    ros::NodeHandle nh;
+    // 3.创建订阅对象：负责订阅坐标系相对关系
+    //3-1 创建一个buffer缓存
+    tf2_ros::Buffer buffer;
+    //3-2创建订阅对象，将订阅数据存入buffer
+    tf2_ros::TransformListener listener(buffer);
+    // 4.组织一个坐标点数据(雷达检测的物体坐标)
+    geometry_msgs::PointStamped ps;
+    ps.header.frame_id = "laser";
+    ps.header.stamp = ros::Time::now();
+    ps.point.x = 2.0;
+    ps.point.y = 3.0;
+    ps.point.z = 5.0;
+    //添加休眠,让订阅方订阅到数据
+    ros::Duration(2).sleep();
+
+    // 5.转换算法，调用tf内置实现
+    ros::Rate rate(10);
+    while (ros::ok())
+    {
+        //核心代码  将雷达检测的位置 转换成相对于base_link的坐标点
+        geometry_msgs::PointStamped ps_out;
+        //转换后的坐标点信息，需要头文件tf2_geometry_msgs/tf2_geometry_msgs.h
+        ps_out = buffer.transform(ps,"base_link");//参数1：输入坐标点，参数2；转换后的坐标系
+
+        // 6.输出
+        ROS_INFO("转换后的坐标值：（%.2f,%.2f,%.2f）,参考坐标系：%s",
+                    ps_out.point.x,
+                    ps_out.point.y,
+                    ps_out.point.z,
+                    ps_out.header.frame_id.c_str());
+        rate.sleep();
+        ros::spinOnce();
+    }
+    
+    return 0;
+}
+```
+
+测试
+
+```
+rosrun tf01_static demo01_static_pub
+```
+
+```shell
+rosrun tf01_static demo02_static_sub
+#[ INFO] [1726369799.161358242]: 转换后的坐标值：（2.20,3.00,5.50）,参考坐标系：base_link
+```
+
+**使用try语句，防止订阅不及时报错（建议）**
+
+```cpp
+#include "ros/ros.h"
+#include "tf2_ros/transform_listener.h"     //创建订阅方对象
+#include "tf2_ros/buffer.h"     //缓存数据到buffer中
+#include "geometry_msgs/PointStamped.h"     //坐标点数据
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"    //tf2坐标消息
+/*
+订阅方：订阅发布的坐标相对关系，传入一个坐标点，调用tf实现转换
+
+流程：
+    1.包含头文件
+    2.编码、初始化、NodeHandle（必须）
+    3.创建订阅对象：负责订阅坐标系相对关系
+    4.组织一个坐标点数据
+    5.转换算法，调用tf内置实现
+    6.输出
+*/
+int main(int argc, char *argv[])
+{
+    // 2.编码、初始化、NodeHandle（必须）
+    setlocale(LC_ALL,"");
+    ros::init(argc,argv,"static_sub");
+    ros::NodeHandle nh;
+    // 3.创建订阅对象：负责订阅坐标系相对关系
+    //3-1 创建一个buffer缓存
+    tf2_ros::Buffer buffer;
+    //3-2创建订阅对象，将订阅数据存入buffer
+    tf2_ros::TransformListener listener(buffer);
+    // 4.组织一个坐标点数据(雷达检测的物体坐标)
+    geometry_msgs::PointStamped ps;
+    ps.header.frame_id = "laser";
+    ps.header.stamp = ros::Time::now();
+    ps.point.x = 2.0;
+    ps.point.y = 3.0;
+    ps.point.z = 5.0;
+    
+    // 5.转换算法，调用tf内置实现
+    ros::Rate rate(10);
+    while (ros::ok())
+    {
+        //核心代码  将ps转换成相对于base_link的坐标点
+        geometry_msgs::PointStamped ps_out;
+
+        try
+        {
+            //转换后的坐标点信息，需要头文件tf2_geometry_msgs/tf2_geometry_msgs.h
+            ps_out = buffer.transform(ps,"base_link");//参数1：输入坐标点，参数2；转换后的坐标系
+
+            // 6.输出
+            ROS_INFO("转换后的坐标值：（%.2f,%.2f,%.2f）,参考坐标系：%s",
+                        ps_out.point.x,
+                        ps_out.point.y,
+                        ps_out.point.z,
+                        ps_out.header.frame_id.c_str());
+        }
+        catch(const std::exception& e)rosrun tf01_static demo02_static_sub 3
+        {
+             ROS_INFO("异常消息：%s",e.what());
+        }
+        rate.sleep();
+        ros::spinOnce();
+    }   
+    return 0;
+}
+```
+
+测试
+
+```
+rosrun tf01_static demo02_static_sub
+```
+
+##### python
+
+**发布方**
+
+tf01_static文件夹中新建scripts文件夹，其中新建demo01_static_p.py，添加权限，配置cmakelists
+
+```cmake
+catkin_install_python(PROGRAMS
+  scripts/demo01_static_p.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+```
+
+demo01_static_p.py
+
+```python
+#! /usr/bin/env python
+#-*- coding: utf-8 -*-
+import rospy
+import tf.transformations
+import tf2_ros  #创建发布对象
+import tf  #将欧拉角转化为四元数
+from geometry_msgs.msg import TransformStamped  #消息类型
+"""
+发布方：发布两个坐标系相对关系（底盘 base_link  雷达 laser）
+流程：
+    1.导包
+    2.初始化节点
+    3.创建发布对象
+    4.组织被发布对象
+    5.发布数据
+    6.spin()
+"""
+if __name__ == "__main__":
+    # 2.初始化节点
+    rospy.init_node("static_pub_p")
+
+    # 3.创建发布对象
+    pub = tf2_ros.StaticTransformBroadcaster()
+
+    # 4.组织被发布对象（写消息数据）
+    ts = TransformStamped()
+    # header
+    ts.header.stamp = rospy.Time.now()
+    ts.header.frame_id = "base_link"
+    # child frame id
+    ts.child_frame_id = "radar"
+
+    #坐标系相对信息
+    #偏移量
+    ts.transform.translation.x = 0.2
+    ts.transform.translation.y = 0.0
+    ts.transform.translation.z = 0.5
+    #旋转量
+    qtn = tf.transformations.quaternion_from_euler(0,0,0)
+    ts.transform.rotation.x = qtn[0]
+    ts.transform.rotation.y = qtn[1]
+    ts.transform.rotation.z = qtn[2]
+    ts.transform.rotation.w = qtn[3]
+
+    # 5.发布数据
+    pub.sendTransform(ts)
+
+    # 6.spin()
+    rospy.spin()
+```
+
+运行
+
+```
+rosrun tf01_static demo01_static_pub_p.py
+```
+
+```
+rostopic echo /tf_static
+transforms: 
+  - 
+    header: 
+      seq: 101
+      stamp: 
+        secs: 1726391990
+        nsecs: 527064085
+      frame_id: "world"
+    child_frame_id: "radar"
+    transform: 
+      translation: 
+        x: 0.2
+        y: 0.0
+        z: 0.5
+      rotation: 
+        x: 0.0
+        y: 0.0
+        z: 0.0
+        w: 1.0
+---
+
+transforms: 
+  - 
+    header: 
+      seq: 101
+      stamp: 
+        secs: 1726395833
+        nsecs: 928730010
+      frame_id: "world"
+    child_frame_id: "radar"
+    transform: 
+      translation: 
+        x: 0.2
+        y: 0.0
+        z: 0.5
+      rotation: 
+        x: 0.0
+        y: 0.0
+        z: 0.0
+        w: 1.0
+---
+```
+
+如果报错：
+
+```
+the rosdep view is empty: call 'sudo rosdep init' and 'rosdep update'
+```
+
+解决办法：
+
+系统检测到`rosdep`没有初始化或更新。以下步骤可以帮助您解决这个问题：
+
+1. **确保网络连接：** 确保您的计算机可以访问互联网，因为`rosdep init`和`rosdep update`需要从网上下载资源。
+
+2. **初始化`rosdep`：** 打开终端，运行以下命令来初始化`rosdep`：
+
+    ```
+    sudo rosdep init
+    ```
+
+    如果您在中国大陆，可能会因为网络问题而无法直接执行这个命令。这时，您可以尝试以下手动初始化的方法。
+
+3. **手动初始化`rosdep`（如果需要）：** 如果无法直接运行`sudo rosdep init`，您可以手动创建初始化文件：
+
+    - 创建`/etc/ros/rosdep/sources.list.d/20-default.list`文件，并添加以下内容：
+
+        ```
+        yaml https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/osx-homebrew.yaml osx
+        yaml https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/base.yaml
+        yaml https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/python.yaml
+        yaml https://raw.githubusercontent.com/ros/rosdistro/master/rosdep/ruby.yaml
+        gbpdistro https://raw.githubusercontent.com/ros/rosdistro/master/releases/fuerte.yaml fuerte
+        ```
+
+    - 请注意，上述URL中的`fuerte`应替换为您使用的ROS版本的名称（例如`melodic`、`noetic`等）。
+
+4. **更新`rosdep`：** 运行以下命令来更新`rosdep`数据库：
+
+    ```
+    rosdep update
+    ```
+
+    如果遇到网络问题，您可能需要设置代理或使用VPN。
+
+5. **设置代理（如果需要）：** 如果您在中国大陆并且需要设置代理，可以在终端中设置代理环境变量：
+
+    ```
+    export http_proxy=http://<proxy>:<port>
+    export https_proxy=http://<proxy>:<port>
+    ```
+
+    替换`<proxy>`和`<port>`为您的代理服务器地址和端口。
+
+6. **重新运行ROS节点：** 完成上述步骤后，再次尝试运行您的ROS节点：
+
+    ```
+    rosrun tf01_static demo01_static_p.py
+    ```
+
+按照这些步骤操作后，`rosdep`应该已经初始化并更新，您应该能够正常运行ROS节点。如果仍然存在问题，请检查网络连接，确保`rosdep`可以访问到所需的资源。
+
+**订阅方**
+
+demo02_static_sub_p.py
+
+```python
+#! /usr/bin/env python
+#-*- coding: utf-8 -*-
+"""
+订阅坐标系信息，生成一个相对于 子级坐标系的坐标点数据
+转换成父级坐标系中的坐标点
+
+流程：
+    1.导包
+    2.节点初始化
+    3.创建订阅对象
+    4.创建雷达坐标系中的坐标点
+    5.将坐标点转换成车体坐标系中的坐标点
+    6.spin
+"""
+    # 1.导包
+import rospy
+import tf2_ros  #创建订阅对象与坐标缓存器
+from tf2_geometry_msgs import PointStamped  #坐标数据对象
+if __name__ == "__main__":
+    # 2.节点初始化
+    rospy.init_node("static_sub_p")
+    # 3.创建订阅对象
+    buffer = tf2_ros.Buffer()   #缓存坐标数据
+    listener = tf2_ros.TransformListener(buffer)    #订阅者对象
+
+    rate = rospy.Rate(10)
+    while not rospy.is_shutdown():
+    # 4.创建雷达坐标系中的坐标点
+        ps = PointStamped() 
+        ps.header.frame_id = "radar"
+        ps.header.stamp = rospy.Time.now()
+        ps.point.x = 2.0
+        ps.point.y = 3.0
+        ps.point.z = 5.0
+
+    # 5.将坐标点转换成车体坐标系中的坐标点
+        try:
+            ps_out = buffer.transform(ps,"base_link")
+            rospy.loginfo("转换结果：（%.2f,%.2f,%.2f）,参考坐标系：%s",
+                        ps_out.point.x,
+                        ps_out.point.y,
+                        ps_out.point.z,
+                        ps_out.header.frame_id
+                        )
+        except Exception as e:
+            rospy.logerr("异常：%s",e)
+    # 6.spin
+        rate.sleep()
+```
+
+运行测试
+
+```
+cd ws
+rosrun tf01_static demo01_static_pub_p.py 
+```
+
+```
+cd ws 
+rosrun tf01_static demo02_static_sub_p.py 
+```
+
+##### 终端
+
+```shell
+#语法
+rosrun tf2_ros static_transform_publisher 
+x偏移量 y偏移量 z偏移量 
+z偏航角度 y俯仰角度 x翻滚角度 
+父级坐标系 子级坐标系
+```
+
+运行测试
+
+```
+rosrun tf2_ros static_transform_publisher 0.1 0.0 0.3 0 0 0.5 /base_link /laser
+```
+
+```
+rviz
+```
+
+<img src="pic_linux/image-20240916094441882.png" alt="image-20240916094441882" style="zoom:50%;" />![GIS知识点——GIS三维开发相关坐标系_GIS特战兵-CSDN博客](pic_linux/aHR0cHM6Ly9pbWcyMDE4LmNuYmxvZ3MuY29tL2Jsb2cvOTEzODMyLzIwMTkwNS85MTM4MzItMjAxOTA1MDcxNjMyMDE4MjUtMTk1Mzc2OTc3NS5wbmc.png)
+
+绕轴旋转正方向：轴指向人脸，绕此轴逆时针旋转
+
+#### 动态坐标变换
+
+两个坐标系之间的相对位置是相对变化的
+
+需求：获取乌龟位姿，发布到rviz中
+
+实现：获取乌龟位姿话题和消息名称
+			订阅位姿信息，发布位姿信息
+
+获取乌龟位姿话题和消息类型
+
+```shell
+rostopic list
+/turtle1/pose		#话题名称
+
+rostopic info /turtle1/pose
+Type: turtlesim/Pose		#消息类型
+
+Publishers: 
+ * /turtlesim (http://100ask:43533/)
+
+Subscribers: None
+
+rosmsg info turtlesim/Pose
+float32 x
+float32 y
+float32 theta
+float32 linear_velocity
+float32 angular_velocity
+```
+
+##### CPP
+
+创建功能包tf02_dynamic，添加依赖 tf2、tf2_ros、tf2_geometry_msgs、roscpp rospy std_msgs geometry_msgs、turtlesim
+
+demo01_dynamic_pub.cpp
+
+```cpp
+#include "ros/ros.h"
+#include "turtlesim/Pose.h"
+#include "tf2_ros/transform_broadcaster.h"
+#include "geometry_msgs/TransformStamped.h"
+#include "tf2/LinearMath/Quaternion.h"
+/*
+发布方：订阅乌龟位姿信息，转换成相对于窗体的坐标关系，并发布
+准备:
+    话题：/turtle1/pose
+    消息：/turtlesim/Pose
+分析：订阅/turtle1/pose，获取乌龟在世界坐标系中的坐标
+     将pose信息转换成坐标系相对信息并发布
+流程：
+    1.头文件
+    2.设置编码，初始化，句柄
+    3.创建订阅对象，订阅 /turtle1/pose
+    4.回调函数处理订阅消息：将位姿信息转换成坐标相对关系，并发布（重点）
+    5.spin()
+*/
+// 回调函数处理订阅消息：将位姿信息转换成坐标相对关系，并发布（重点）
+void doPose(const turtlesim::Pose::ConstPtr& pose)
+{
+    //1.创建坐标发布对象
+    static tf2_ros::TransformBroadcaster pub;   //static对象在程序运行期间会一直存在
+    //2.组织被发布的数据
+    //坐标对象
+    geometry_msgs::TransformStamped ts;
+    ts.header.frame_id = "world";   //全局坐标
+    ts.header.stamp = ros::Time::now(); 
+    ts.child_frame_id = "turtle1";  //子坐标   
+    //坐标偏移量
+    ts.transform.translation.x = pose->x;
+    ts.transform.translation.y = pose->y;
+    ts.transform.translation.z = 0; //乌龟处于二维平面
+    //坐标旋转量
+    tf2::Quaternion qtn;
+    qtn.setRPY(0,0,pose->theta);
+    ts.transform.rotation.x = qtn.getX();
+    ts.transform.rotation.y = qtn.getY();
+    ts.transform.rotation.z = qtn.getZ();
+    ts.transform.rotation.w = qtn.getW();
+    //3.发布
+    pub.sendTransform(ts);
+}
+int main(int argc, char *argv[])
+{   
+    // 2.设置编码，初始化，句柄
+    setlocale(LC_ALL,"");
+    ros::init(argc,argv,"dynamic_pub");
+    ros::NodeHandle nh;
+    // 3.创建订阅对象，订阅 /turtle1/pose
+    ros::Subscriber sub;
+    sub = nh.subscribe("/turtle1/pose",100,doPose);
+    // 4.回调函数处理订阅消息：将位姿信息转换成坐标相对关系，并发布（重点）
+    // 5.spin()
+    ros::spin();
+    return 0;
+}
+```
+
+配置cmakelists后，编译并执行
+
+```shell
+rosrun turtlesim turtlesim_node
+```
+
+```
+rosrun turtlesim turtle_turtle_teleop_key
+```
+
+```
+cd ws
+rosrun tf02_dynamic demo01_dynamic_pub 
+```
+
+```
+rviz
+```
+
+用键盘控制乌龟运行，rviz上看到相同运动
+
+**订阅方**
+
+需求：订阅相对于乌龟坐标系下的物体坐标，用转换算法修正后，加入世界坐标系，并用终端输出
+
+demo02_dynamic_sub.cpp
+
+```cpp
+#include "ros/ros.h"
+#include "tf2_ros/transform_listener.h"     //创建订阅方对象
+#include "tf2_ros/buffer.h"     //缓存数据到buffer中
+#include "geometry_msgs/PointStamped.h"     //坐标点数据
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"    //tf2坐标消息
+/*
+订阅方：订阅发布的坐标相对关系，传入一个坐标点，调用tf实现转换
+
+流程：
+    1.包含头文件
+    2.编码、初始化、NodeHandle（必须）
+    3.创建订阅对象：负责订阅坐标系相对关系
+    4.组织一个坐标点数据
+    5.转换算法，调用tf内置实现
+    6.输出
+*/
+int main(int argc, char *argv[])
+{
+    // 2.编码、初始化、NodeHandle（必须）
+    setlocale(LC_ALL,"");
+    ros::init(argc,argv,"dynamic_sub");
+    ros::NodeHandle nh;
+    // 3.创建订阅对象：负责订阅坐标系相对关系
+    //3-1 创建一个buffer缓存
+    tf2_ros::Buffer buffer;
+    //3-2创建订阅对象，将订阅数据存入buffer
+    tf2_ros::TransformListener listener(buffer);
+    // 4.组织一个坐标点数据(乌龟检测的物体坐标，相对于乌龟的坐标系)
+    geometry_msgs::PointStamped ps;
+    ps.header.frame_id = "turtle1";
+    //用了动态坐标系，废除订阅方时间戳，由于订阅延时，会导致发布时间戳与订阅时间戳无法对齐，导致报错
+    ps.header.stamp = ros::Time(0.0);    
+    ps.point.x = 2.0;
+    ps.point.y = 3.0;
+    ps.point.z = 5.0;
+    
+    // 5.转换算法，调用tf内置实现
+    ros::Rate rate(10);
+    while (ros::ok())
+    {
+        //核心代码  将ps转换成相对于base_link的坐标点
+        geometry_msgs::PointStamped ps_out;
+
+        try
+        {
+            //转换后的坐标点信息，需要头文件tf2_geometry_msgs/tf2_geometry_msgs.h
+            ps_out = buffer.transform(ps,"world");//参数1：输入坐标点，参数2；转换后的坐标系
+
+            // 6.输出
+            ROS_INFO("转换后的坐标值：（%.2f,%.2f,%.2f）,参考坐标系：%s",
+                        ps_out.point.x,
+                        ps_out.point.y,
+                        ps_out.point.z,
+                        ps_out.header.frame_id.c_str());
+        }
+        catch(const std::exception& e)
+        {
+            ROS_INFO("异常消息：%s",e.what());
+        }
+        rate.sleep();
+        ros::spinOnce();
+    }    
+    return 0;
+}
+
+```
+
+配置cmake后，编译并测试
+
+```
+rosrun turtlesim turtlesim_node
+```
+
+```
+rosrun turtlesim turtle_teleop_key 
+```
+
+```shell
+cd ws
+rosrun tf02_dynamic demo01_dynamic_pub 
+```
+
+```
+rosrun tf02_dynamic demo01_dynamic_sub 
+```
+
+##### python
+
+发布方，demo01_dynamic_pub_p.py
+
+```python
+#! /usr/bin/env python
+"""  
+    动态的坐标系相对姿态发布(一个坐标系相对于另一个坐标系的相对姿态是不断变动的)
+
+    需求: 启动 turtlesim_node,该节点中窗体有一个世界坐标系(左下角为坐标系原点)，乌龟是另一个坐标系，键盘
+    控制乌龟运动，将两个坐标系的相对位置动态发布
+
+    实现分析:
+        1.乌龟本身不但可以看作坐标系，也是世界坐标系中的一个坐标点
+        2.订阅 turtle1/pose,可以获取乌龟在世界坐标系的 x坐标、y坐标、偏移量以及线速度和角速度
+        3.将 pose 信息转换成 坐标系相对信息并发布
+    实现流程:
+        1.导包
+        2.初始化 ROS 节点
+        3.订阅 /turtle1/pose 话题消息
+        4.回调函数处理
+            4-1.创建 TF 广播器
+            4-2.创建 广播的数据(通过 pose 设置)
+            4-3.广播器发布数据
+        5.spin
+"""
+# 1.导包
+import rospy
+import tf2_ros
+import tf
+from turtlesim.msg import Pose
+from geometry_msgs.msg import TransformStamped
+
+#     4.回调函数处理
+def doPose(pose):
+    #         4-1.创建 TF 广播器
+    broadcaster = tf2_ros.TransformBroadcaster()
+    #         4-2.创建 广播的数据(通过 pose 设置)
+    tfs = TransformStamped()
+    tfs.header.frame_id = "world"
+    tfs.header.stamp = rospy.Time.now()
+    tfs.child_frame_id = "turtle1"
+    tfs.transform.translation.x = pose.x
+    tfs.transform.translation.y = pose.y
+    tfs.transform.translation.z = 0.0
+    qtn = tf.transformations.quaternion_from_euler(0,0,pose.theta)
+    tfs.transform.rotation.x = qtn[0]
+    tfs.transform.rotation.y = qtn[1]
+    tfs.transform.rotation.z = qtn[2]
+    tfs.transform.rotation.w = qtn[3]
+    #         4-3.广播器发布数据
+    broadcaster.sendTransform(tfs)
+
+if __name__ == "__main__":
+    # 2.初始化 ROS 节点
+    rospy.init_node("dynamic_tf_pub_p")
+    # 3.订阅 /turtle1/pose 话题消息
+    sub = rospy.Subscriber("/turtle1/pose",Pose,doPose)
+    #     4.回调函数处理
+    #         4-1.创建 TF 广播器
+    #         4-2.创建 广播的数据(通过 pose 设置)
+    #         4-3.广播器发布数据
+    #     5.spin
+    rospy.spin()
+```
+
+测试
+
+```
+rosrun turtlesim turtlesim_node 
+```
+
+```
+rosrun turtlesim turtle_teleop_key 
+```
+
+```
+cd ws
+rosrun tf02_dynamic demo01_dynamic_pub_p.py
+```
+
+```shell
+rviz
+#键盘控制乌龟运动时，坐标系同时显示
+```
+
+订阅方
+
+demo02_dynamic_sub_p.py
+
+```python
+#! /usr/bin/env python
+#-*- coding: utf-8 -*-
+"""
+订阅坐标系信息，生成一个相对于 子级坐标系的坐标点数据
+转换成父级坐标系中的坐标点
+
+流程：
+    1.导包
+    2.节点初始化
+    3.创建订阅对象
+    4.创建雷达坐标系中的坐标点
+    5.将坐标点转换成车体坐标系中的坐标点
+    6.spin
+"""
+    # 1.导包
+import rospy
+import tf2_ros  #创建订阅对象与坐标缓存器
+from tf2_geometry_msgs import PointStamped  #坐标数据对象
+if __name__ == "__main__":
+    # 2.节点初始化
+    rospy.init_node("dynamic_sub_p")
+    # 3.创建订阅对象
+    buffer = tf2_ros.Buffer()   #缓存坐标数据
+    listener = tf2_ros.TransformListener(buffer)    #订阅者对象
+    #创建订阅对象的同时，无需写话题名称，会自动接收坐标数据，存入buffer
+
+    rate = rospy.Rate(10)
+    while not rospy.is_shutdown():
+    # 4.创建乌龟坐标系中的坐标点
+        ps = PointStamped() 
+        ps.header.frame_id = "turtle1"
+        #订阅者时间戳置空，只让发布者时间戳生效，防止订阅延迟报错
+        ps.header.stamp = rospy.Time(0.0)  
+        ps.point.x = 2.0
+        ps.point.y = 3.0
+        ps.point.z = 5.0
+
+    # 5.将坐标点转换成世界坐标系中的坐标点
+        try:
+            ps_out = buffer.transform(ps,"world")
+            rospy.loginfo("转换结果：（%.2f,%.2f,%.2f）,参考坐标系：%s",
+                        ps_out.point.x,
+                        ps_out.point.y,
+                        ps_out.point.z,
+                        ps_out.header.frame_id
+                        )
+        except Exception as e:
+            rospy.logerr("异常：%s",e)
+    # 6.spin
+        rate.sleep()
+```
+
+运行并测试
+
+```
+rosrun turtlesim turtlesim_node
+```
+
+```
+rosrun turtlesim turtle_teleop_key 
+```
+
+```
+cd ws 
+rosrun tf02_dynamic demo01_dynamic_pub
+```
+
+```
+cd ws
+rosrun tf02_dynamic demo02_dynamic_sub
+```
+
+现象：终端输出 乌龟坐标
+
+#### 多坐标变换
+
+实现世界坐标系中，两个子坐标系的坐标变换
+
+##### CPP
+
+创建功能包tf03_tfs，依赖包：tf2、tf2_ros、tf2_geometry_msgs、roscpp rospy std_msgs geometry_msgs、turtlesim，编译
+
+**发布方**
+
+新建launch文件夹，新建文件tfs_c.launch
+
+```xml
+<launch>
+    <!-- 发布 son1 相对于world 以及 son2 相对于world 的坐标关系 -->
+    <!-- args参数：偏移量、旋转量、世界坐标系、子坐标系 -->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="son1" args="1 0 0 0 0 0 /world /son1" output="screen" />
+    <node pkg="tf2_ros" type="static_transform_publisher" name="son2" args="2 0 0 0 0 0 /world /son2" output="screen" />
+</launch>
+```
+
+测试
+
+```
+roslaunch tf03_tfs tfs_c.launch
+```
+
+```
+rviz
+```
+
+订阅方
+
+demo01_tfs.cpp
+
+```cpp
+/*
+
+需求:
+    现有坐标系统，父级坐标系统 world,下有两子级系统 son1，son2，
+    son1 相对于 world，以及 son2 相对于 world 的关系是已知的，
+    求 son1 与 son2中的坐标关系，又已知在 son1中一点的坐标，要求求出该点在 son2 中的坐标
+实现流程:
+    1.包含头文件
+    2.初始化 ros 节点
+    3.创建 ros 句柄
+    4.创建 TF 订阅对象
+    5.解析订阅信息中获取 son1 坐标系原点在 son2 中的坐标
+      解析 son1 中的点相对于 son2 的坐标
+    6.spin
+
+*/
+//1.包含头文件
+#include "ros/ros.h"
+#include "tf2_ros/transform_listener.h"
+#include "tf2_ros/buffer.h"
+#include "tf2/LinearMath/Quaternion.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+#include "geometry_msgs/TransformStamped.h"
+#include "geometry_msgs/PointStamped.h"
+
+int main(int argc, char *argv[])
+{   setlocale(LC_ALL,"");
+    // 2.初始化 ros 节点
+    ros::init(argc,argv,"sub_frames");
+    // 3.创建 ros 句柄
+    ros::NodeHandle nh;
+    // 4.创建 TF 订阅对象
+    tf2_ros::Buffer buffer; 
+    tf2_ros::TransformListener listener(buffer);
+    // 5.解析订阅信息中获取 son1 坐标系原点在 son2 中的坐标
+    ros::Rate r(1);
+    while (ros::ok())
+    {
+        try
+        {
+            //解析 son1 中的点相对于 son2 的坐标
+            /*
+            buffer.lookupTransform("参数1","参数2",参数3)
+            A 相对于 B 的坐标系关系
+            参数1：目标坐标系 B
+            参数2：源坐标系   A
+            参数3：ros::Time(0) 取时间间隔最短的两个坐标关系帧，计算相对关系
+            返回值：geometry_msgs::TransformStamped  两坐标系的相对关系
+            */
+            geometry_msgs::TransformStamped tfs = buffer.lookupTransform("son2","son1",ros::Time(0));
+            ROS_INFO("Son1 相对于 Son2 的坐标关系:父坐标系ID=%s",tfs.header.frame_id.c_str());
+            ROS_INFO("Son1 相对于 Son2 的坐标关系:子坐标系ID=%s",tfs.child_frame_id.c_str());
+            ROS_INFO("Son1 相对于 Son2 的坐标关系:x=%.2f,y=%.2f,z=%.2f",
+                    tfs.transform.translation.x,
+                    tfs.transform.translation.y,
+                    tfs.transform.translation.z
+                    );
+
+            // 坐标点解析
+            geometry_msgs::PointStamped ps;
+            ps.header.frame_id = "son1";
+            ps.header.stamp = ros::Time::now();
+            ps.point.x = 1.0;
+            ps.point.y = 2.0;
+            ps.point.z = 3.0;
+
+            geometry_msgs::PointStamped psAtSon2;
+            psAtSon2 = buffer.transform(ps,"son2");
+            ROS_INFO("在 Son2 中的坐标:x=%.2f,y=%.2f,z=%.2f",
+                    psAtSon2.point.x,
+                    psAtSon2.point.y,
+                    psAtSon2.point.z
+                    );
+        }
+        catch(const std::exception& e)
+        {
+            // std::cerr << e.what() << '\n';
+            ROS_INFO("异常信息:%s",e.what());
+        }
+        r.sleep();
+        // 6.spin
+        ros::spinOnce();
+    }
+    return 0;
+}
+```
+
+测试
+
+```
+rosrun tf03_tfs demo01_tfs
+```
+
+```
+[ INFO] [1726536164.689534557]: Son1 相对于 Son2 的坐标关系:父坐标系ID=son2
+[ INFO] [1726536164.689612186]: Son1 相对于 Son2 的坐标关系:子坐标系ID=son1
+[ INFO] [1726536164.689671694]: Son1 相对于 Son2 的坐标关系:x=-1.00,y=0.00,z=0.00
+[ INFO] [1726536164.689709998]: 在 Son2 中的坐标:x=0.00,y=2.00,z=3.00
+```
+
+##### python
+
+发布方：cpp中的launch文件
+
+订阅方：demo01_tfs_p.py
+
+```python
+#!/usr/bin/env python
+#-*- coding: utf-8 -*-
+"""  
+    需求:
+        现有坐标系统，父级坐标系统 world,下有两子级系统 son1，son2，
+        son1 相对于 world，以及 son2 相对于 world 的关系是已知的，
+        求 son1 与 son2中的坐标关系，又已知在 son1中一点的坐标，要求求出该点在 son2 中的坐标
+    实现流程:   
+        1.导包
+        2.初始化 ROS 节点
+        3.创建 TF 订阅对象
+        4.调用 API 求出 son1 相对于 son2 的坐标关系
+        5.创建一依赖于 son1 的坐标点，调用 API 求出该点在 son2 中的坐标
+        6.spin
+"""
+# 1.导包
+import rospy
+import tf2_ros
+from geometry_msgs.msg import TransformStamped
+from tf2_geometry_msgs import PointStamped
+
+if __name__ == "__main__":
+
+    # 2.初始化 ROS 节点
+    rospy.init_node("frames_sub_p")
+    # 3.创建 TF 订阅对象
+    buffer = tf2_ros.Buffer()
+    listener = tf2_ros.TransformListener(buffer)
+
+    rate = rospy.Rate(1)
+    while not rospy.is_shutdown():
+
+        try:
+        # 4.调用 API 求出 son1 相对于 son2 的坐标关系
+            #lookup_transform(self, target_frame, source_frame, time, timeout=rospy.Duration(0.0)):
+            tfs = buffer.lookup_transform("son2","son1",rospy.Time(0))
+            rospy.loginfo("son1 与 son2 相对关系:")
+            rospy.loginfo("父级坐标系:%s",tfs.header.frame_id)
+            rospy.loginfo("子级坐标系:%s",tfs.child_frame_id)
+            rospy.loginfo("相对坐标:x=%.2f, y=%.2f, z=%.2f",
+                        tfs.transform.translation.x,
+                        tfs.transform.translation.y,
+                        tfs.transform.translation.z,
+            )
+        # 5.创建一依赖于 son1 的坐标点，调用 API 求出该点在 son2 中的坐标
+            point_source = PointStamped()
+            point_source.header.frame_id = "son1"
+            point_source.header.stamp = rospy.Time.now()
+            point_source.point.x = 1
+            point_source.point.y = 2
+            point_source.point.z = 3
+
+            point_target = buffer.transform(point_source,"son2")
+
+            rospy.loginfo("point_target 所属的坐标系:%s",point_target.header.frame_id)
+            rospy.loginfo("坐标点相对于 son2 的坐标:(%.2f,%.2f,%.2f)",
+                        point_target.point.x,
+                        point_target.point.y,
+                        point_target.point.z
+            )
+
+        except Exception as e:
+            rospy.logerr("错误提示:%s",e)
+
+        rate.sleep()
+    # 6.spin    
+    # rospy.spin()
+```
+
+测试
+
+```
+rosrun tf03_tfs demo01_tfs_p.py
+```
+
+```
+[INFO] [1726539595.972950]: son1 与 son2 相对关系:
+[INFO] [1726539595.974439]: 父级坐标系:son2
+[INFO] [1726539595.975454]: 子级坐标系:son1
+[INFO] [1726539595.976626]: 相对坐标:x=-1.00, y=0.00, z=0.00
+[INFO] [1726539595.980209]: point_target 所属的坐标系:son2
+[INFO] [1726539595.981932]: 坐标点相对于 son2 的坐标:(0.00,2.00,3.00)
+```
+
+#### 坐标系关系查看
+
+安装工具
+
+```shell
+# 查看是否有安装
+rospack find tf2_tools
+```
+
+```shell
+#如果没安装，运行下面命令
+sudo apt install ros-melodic-tf2-tools
+```
+
+测试
+
+```shell
+roslaunch tf03_tfs tfs_c.launch		#运行坐标系节点
+```
+
+```shell
+rosrun tf2_tools view_frames.py		#生成坐标系关系图.pdf，存入运行路径
+evince frames.pdf		#打开pdf文件
 ```
 
