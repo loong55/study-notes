@@ -2994,6 +2994,7 @@ book@100ask:~$ rostopic list
 
 book@100ask:~$ rqt_graph
 #/teleop_turtle  ----/turtle1/cmd_vel---->  /teleop_turtle
+#运动控制的话题名称：/turtle1/cmd_vel
 
 book@100ask:~$ rostopic info /turtle1/cmd_vel		#查看话题信息
 Type: geometry_msgs/Twist		#消息数据类型
@@ -3067,6 +3068,7 @@ angular:
   y: 0.0
   z: 1.0" 
 # 输入期间用tab补齐，后续发现乌龟作圆周运动
+#-r 10表示以10hz发布数据
 ```
 
 ##### c++代码实现
@@ -3255,7 +3257,7 @@ book@100ask:~$ rostopic list
 /rosout_agg
 /turtle1/cmd_vel
 /turtle1/color_sensor
-/turtle1/pose						#乌龟位姿话题
+/turtle1/pose						#乌龟位姿 话题名称
 
 book@100ask:~$ rostopic info /turtle1/pose
 Type: turtlesim/Pose		#消息类型
@@ -3936,7 +3938,6 @@ ros::spin();					//无限次回调处理函数，用于接收数据，后面程�
 void cb(const ros::TimerEvent& event){
     ROS_INFO("--------");
     ROS_INFO("函数被调用的时刻：%.2f",event.current_real.toSec());
-
 }
 
 int main(int argc, char  *argv[])
@@ -7246,3 +7247,949 @@ rosrun tf2_tools view_frames.py		#生成坐标系关系图.pdf，存入运行路
 evince frames.pdf		#打开pdf文件
 ```
 
+#### 坐标变换实操
+
+需求：键盘控制乌龟1运动，乌龟2跟随乌龟1运动
+
+实现原理：
+1、获取两只乌龟相对于世界坐标系的坐标信息
+2、以乌龟1为父坐标系，乌龟2 为子坐标系，建立坐标系，获取2的坐标
+3、生成速度信息，控制2运动
+
+实现流程：
+
+1. 启动乌龟显示节点（launch文件）
+2. 在乌龟显示窗体中生成一只新的乌龟(需要使用服务)
+3. 编写两只乌龟发布坐标信息的节点
+4. 编写订阅节点订阅坐标信息并生成新的相对关系生成速度信息
+
+CPP
+
+创建功能包：tf04_test
+
+添加依赖：tf2、tf2_ros、tf2_geometry_msgs、roscpp rospy std_msgs geometry_msgs、turtlesim
+
+新建launch文件夹，创建launch文件test.launch
+
+```xml
+<launch>
+    <!-- 1.启动乌龟gui节点 -->
+    <node pkg="turtlesim" type="turtlesim_node" name="turtle1" output="screen"/>
+    <!-- 键盘控制节点 -->
+    <node pkg="turtlesim" type="turtle_teleop_key" name="key" output="screen"/>
+
+    <!-- 2.生成新乌龟的节点 -->
+    <node pkg="tf04_test" type="test01_new_turtle" name="turtle2" output="screen"/>
+
+    <!-- 3.启动两个乌龟相对于世界的坐标关系的发布 -->
+    <!-- 
+        基本思路：
+            1.节点只编写一个
+            2.节点启动两次
+            3.节点启动时，动态传参：turtle1,turtle2
+     -->
+    <node pkg="tf04_test" type="test02_pub_turtle" name="pub1" args="turtle1" output="screen"/>
+    <node pkg="tf04_test" type="test02_pub_turtle" name="pub2" args="turtle2" output="screen"/>
+
+    <!-- 4.需要订阅 turtle1 与turtle2 相对于世界坐标系的坐标消息，
+    并转换成 turtle1 相对于 turtle2 的坐标关系，
+    再生成速度消息 -->
+    <node pkg="tf04_test" type="test03_control_turtle2" name="control" output="screen"/>
+
+</launch>
+```
+
+test01_new_turtle.cpp
+
+生成一只新乌龟
+
+```cpp
+/*
+    生成一只小乌龟
+    准备工作:
+        1.服务话题 /spawn
+        2.服务消息类型 turtlesim/Spawn
+        3.运行前先启动 turtlesim_node 节点
+
+    实现流程:
+        1.包含头文件
+          需要包含 turtlesim 包下资源，注意在 package.xml 配置
+        2.初始化 ros 节点
+        3.创建 ros 句柄
+        4.创建 service 客户端
+        5.等待服务启动
+        6.发送请求
+        7.处理响应
+*/
+#include "ros/ros.h"
+#include "turtlesim/Spawn.h"
+
+int main(int argc, char *argv[])
+{
+    setlocale(LC_ALL,"");
+    // 2.初始化 ros 节点
+    ros::init(argc,argv,"turtle2");
+    // 3.创建 ros 句柄
+    ros::NodeHandle nh;
+    // 4.创建 service 客户端
+    ros::ServiceClient client = nh.serviceClient<turtlesim::Spawn>("/spawn");
+    // 5.等待服务启动
+    ros::service::waitForService("/spawn");
+    // 6.发送请求
+    turtlesim::Spawn spawn;//创建数据载体
+    spawn.request.x = 1.0;
+    spawn.request.y = 1.0;
+    spawn.request.theta = 1.57;
+    spawn.request.name = "turtle2";
+    //客户端向服务端发送数据，响应成功返回true,服务端响应数据存入spawn
+    bool flag = client.call(spawn);
+    // 7.处理响应
+    if (flag)
+    {
+        ROS_INFO("有新龟诞生：%s!",spawn.response.name.c_str());
+    }
+    else
+    {
+        ROS_INFO("龟龟出生失败！");
+    }
+    
+    return 0;
+}
+
+```
+
+test02_pub_turtle.cpp
+
+动态发布	乌龟世界坐标
+
+```cpp
+#include "ros/ros.h"
+#include "turtlesim/Pose.h"
+#include "tf2_ros/transform_broadcaster.h"
+#include "geometry_msgs/TransformStamped.h"
+#include "tf2/LinearMath/Quaternion.h"
+//动态接收乌龟名字
+std::string turtle_name;
+
+void doPose(const turtlesim::Pose::ConstPtr& pose)
+{
+    //1.创建坐标发布对象
+    static tf2_ros::TransformBroadcaster pub;   //static对象在程序运行期间会一直存在
+    //2.组织被发布的数据
+    //坐标对象
+    geometry_msgs::TransformStamped ts;
+    ts.header.frame_id = "world";   //全局坐标
+    ts.header.stamp = ros::Time::now(); 
+    //关键点2：动态传入
+    ts.child_frame_id = turtle_name;  //子坐标   
+    //坐标偏移量
+    ts.transform.translation.x = pose->x;
+    ts.transform.translation.y = pose->y;
+    ts.transform.translation.z = 0; //乌龟处于二维平面
+    //坐标旋转量
+    tf2::Quaternion qtn;
+    qtn.setRPY(0,0,pose->theta);
+    ts.transform.rotation.x = qtn.getX();
+    ts.transform.rotation.y = qtn.getY();
+    ts.transform.rotation.z = qtn.getZ();
+    ts.transform.rotation.w = qtn.getW();
+    //3.发布
+    pub.sendTransform(ts);
+}
+int main(int argc, char *argv[])
+{   
+    // 2.设置编码，初始化，句柄
+    setlocale(LC_ALL,"");
+    ros::init(argc,argv,"dynamic_pub");
+
+    //解析传入参数
+    if (argc != 2)
+    {
+        ROS_ERROR("请传入正确参数");
+    }
+    else
+    {
+        turtle_name = argv[1];
+        ROS_INFO("乌龟 %s 坐标发送",turtle_name.c_str());
+    }
+    
+    ros::NodeHandle nh;
+    // 3.创建订阅对象，订阅 /turtle1/pose
+    ros::Subscriber sub;
+    //关键点1：订阅的话题名称，turtle1 或 turtle2 动态传入
+    sub = nh.subscribe(turtle_name + "/pose",100,doPose);
+    // 4.回调函数处理订阅消息：将位姿信息转换成坐标相对关系，并发布（重点）
+    // 5.spin()
+    ros::spin();
+    return 0;
+}
+```
+
+乌龟2 跟随 乌龟1 运动
+
+test03_control_turtle2.cpp
+
+```cpp
+/*
+需求:
+    需求1.换算出turtle1 相对于turtle2 的关系
+    需求2：计算角速度和线速度并发布
+实现流程:
+    1.包含头文件
+    2.初始化 ros 节点
+    3.创建 ros 句柄
+    4.创建 TF 订阅对象
+    5.解析订阅信息中获取 son1 坐标系原点在 son2 中的坐标
+      解析 son1 中的点相对于 son2 的坐标
+    6.spin
+*/
+//1.包含头文件
+#include "ros/ros.h"
+#include "tf2_ros/transform_listener.h"
+#include "tf2_ros/buffer.h"
+#include "tf2/LinearMath/Quaternion.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.h"
+#include "geometry_msgs/TransformStamped.h"
+#include "geometry_msgs/PointStamped.h"
+#include "geometry_msgs/Twist.h"
+
+int main(int argc, char *argv[])
+{   setlocale(LC_ALL,"");
+    // 2.初始化 ros 节点
+    ros::init(argc,argv,"sub_frames");
+    // 3.创建 ros 句柄
+    ros::NodeHandle nh;
+    // 4.创建 TF 订阅对象
+    tf2_ros::Buffer buffer; 
+    tf2_ros::TransformListener listener(buffer);
+
+    //A.创建发布对象
+    ros::Publisher pub = nh.advertise<geometry_msgs::Twist>("/turtle2/cmd_vel",100);
+
+    // 5.解析订阅信息中获取 son1 坐标系原点在 son2 中的坐标
+    ros::Rate r(1);
+    while (ros::ok())
+    {
+        try
+        {
+            //解析 turtle1 中的点相对于 turtle2 的坐标
+            /*
+            buffer.lookupTransform("参数1","参数2",参数3)
+            A 相对于 B 的坐标系关系
+            参数1：目标坐标系 B
+            参数2：源坐标系   A
+            参数3：ros::Time(0) 取时间间隔最短的两个坐标关系帧，计算相对关系
+            返回值：geometry_msgs::TransformStamped  两坐标系的相对关系
+            */
+            geometry_msgs::TransformStamped tfs = buffer.lookupTransform("turtle2","turtle1",ros::Time(0));
+            // ROS_INFO("Son1 相对于 Son2 的坐标关系:父坐标系ID=%s",tfs.header.frame_id.c_str());//turtle2
+            // ROS_INFO("Son1 相对于 Son2 的坐标关系:子坐标系ID=%s",tfs.child_frame_id.c_str());//turtle1
+            // ROS_INFO("Son1 相对于 Son2 的坐标关系:x=%.2f,y=%.2f,z=%.2f",
+            //         tfs.transform.translation.x,
+            //         tfs.transform.translation.y,
+            //         tfs.transform.translation.z
+            //         );
+
+            //B.计算并组织速度消息
+            geometry_msgs::Twist twist;
+            /*
+            组织速度，只需要设置线速度的X和角速度Z
+            X = 系数 *（x^2+y^2）^0.5
+            Z = 系数 * arctan(y/x)
+            */
+            twist.linear.x = 1 * sqrt(pow(tfs.transform.translation.x,2) + pow(tfs.transform.translation.y,2));
+            twist.angular.z = 1 * atan2(tfs.transform.translation.y,tfs.transform.translation.x);
+            //C.发布
+            pub.publish(twist);
+        }
+        catch(const std::exception& e)
+        {
+            // std::cerr << e.what() << '\n';
+            ROS_INFO("异常信息:%s",e.what());
+        }
+
+        r.sleep();
+        // 6.spin
+        ros::spinOnce();
+    }
+    return 0;
+}
+```
+
+运行测试
+
+```
+roslaunch tf04_test test.launch
+```
+
+### 5.2 rosbag
+
+**概念**
+
+是用于录制和回放 ROS 主题的一个工具集。
+
+实现了数据的复用，方便调试、测试。
+
+**本质**
+
+rosbag本质也是ros的节点，当录制时，rosbag是一个订阅节点，可以订阅话题消息并将订阅到的数据写入磁盘文件；当重放时，rosbag是一个发布节点，可以读取磁盘文件，发布文件中的话题消息。
+
+#### 命令行
+
+**需求:**
+
+ROS 内置的乌龟案例并操作，操作过程中使用 rosbag 录制，录制结束后，实现重放
+
+**实现:**
+
+1.准备
+
+创建目录保存录制的文件
+
+```
+mkdir ./xxx
+cd xxx
+Copy
+```
+
+2.开始录制
+
+```
+rosbag record -a -O 目标文件
+```
+
+操作小乌龟一段时间，结束录制使用 ctrl + c，在创建的目录中会生成bag文件。
+
+3.查看文件
+
+```
+rosbag info 文件名
+```
+
+4.回放文件
+
+```
+rosbag play 文件名
+```
+
+重启乌龟节点，会发现，乌龟按照录制时的轨迹运动。
+
+#### 编码
+
+创建功能包rosbag_demo，依赖：roscpp,rospy,std_msgs,rosbag
+
+创建文件：demo01_write_bag.cpp
+
+```cpp
+#include "ros/ros.h"
+#include "rosbag/bag.h"
+#include "std_msgs/String.h"
+
+
+int main(int argc, char *argv[])
+{
+    ros::init(argc,argv,"bag_write");
+    ros::NodeHandle nh;
+    //创建bag对象
+    rosbag::Bag bag;
+    //打开
+    bag.open("test.bag",rosbag::BagMode::Write);
+    //写
+    std_msgs::String msg;
+    msg.data = "hello world";
+    /*
+    参数1：话题
+    参数2：时间戳
+    参数3：消息
+    */
+    bag.write("/chatter",ros::Time::now(),msg);
+    bag.write("/chatter",ros::Time::now(),msg);
+    bag.write("/chatter",ros::Time::now(),msg);
+    bag.write("/chatter",ros::Time::now(),msg);
+    //关闭
+    bag.close();
+
+    return 0;
+}
+```
+
+编译并测试
+
+```
+rosrun rosbag_demo demo01_write_bag 
+```
+
+```
+rosbag info test.bag
+```
+
+### 5.3 rqt工具箱
+
+可视化查看话题、节点等内容的工具
+
+使用
+
+```
+rqt
+```
+
+启动后，点击plugins添加功能插件
+
+**rqt_graph**		查看节点关系
+
+**rqt_console**	查看日志消息
+
+**rqt_plot**			查看话题数据
+
+**rqt_bag**			录制运动信息
+
+## 第六章 机器人系统仿真
+
+### 6.1 概念
+
+机器人操作系统学习、开发与测试过程中，会遇到诸多问题，比如:
+
+> 场景1:机器人一般价格不菲，学习ROS要购买一台机器人吗？
+>
+> 场景2:机器人与之交互的外界环境具有多样性，如何实现复杂的环境设计？
+>
+> 场景3:测试时，直接将未经验证的程序部署到实体机器人运行，安全吗？
+>
+> ...
+
+在诸如此类的场景中，ROS中的**仿真**就显得尤为重要了。
+
+___
+
+#### 1.**概念**
+
+**机器人系统仿真：**是通过计算机对实体机器人系统进行模拟的技术，在 ROS 中，仿真实现涉及的内容主要有三:对机器人建模(URDF)、创建仿真环境(Gazebo)以及感知环境(Rviz)等系统性实现。
+
+#### 2.**作用**
+
+##### 2.1仿真优势:
+
+仿真在机器人系统研发过程中占有举足轻重的地位，在研发与测试中较之于实体机器人实现，仿真有如下几点的显著优势:
+
+1.**低成本:**当前机器人成本居高不下，动辄几十万，仿真可以大大降低成本，减小风险
+
+2.**高效:**搭建的环境更为多样且灵活，可以提高测试效率以及测试覆盖率
+
+3.**高安全性:**仿真环境下，无需考虑耗损问题
+
+##### 2.2仿真缺陷:
+
+机器人在仿真环境与实际环境下的表现差异较大，换言之，仿真并不能完全做到模拟真实的物理世界，存在一些"失真"的情况，原因:
+
+1.仿真器所使用的物理引擎目前还不能够完全精确模拟真实世界的物理情况
+
+2.仿真器构建的是关节驱动器（电机&齿轮箱）、传感器与信号通信的绝对理想情况，目前不支持模拟实际硬件缺陷或者一些临界状态等情形
+
+#### 3.相关组件
+
+##### 3.1URDF
+
+**URDF**是 Unified Robot Description Format 的首字母缩写，直译为**统一(标准化)机器人描述格式**，可以以一种 XML 的方式描述机器人的部分结构，比如底盘、摄像头、激光雷达、机械臂以及不同关节的自由度.....,该文件可以被 C++ 内置的解释器转换成可视化的机器人模型，是 ROS 中实现机器人仿真的重要组件
+
+##### 3.2rviz
+
+RViz 是 ROS Visualization Tool 的首字母缩写，直译为**ROS的三维可视化工具**。它的主要目的是以三维方式显示ROS消息，可以将 数据进行可视化表达。例如:可以显示机器人模型，可以无需编程就能表达激光测距仪（LRF）传感器中的传感 器到障碍物的距离，RealSense、Kinect或Xtion等三维距离传感器的点云数据（PCD， Point Cloud Data），从相机获取的图像值等
+
+以“ros- \[ROS\_DISTRO\] -desktop-full”命令安装ROS时，RViz会默认被安装。
+
+运行使用命令`rviz`或`rosrun rviz rviz`
+
+_**如果rviz没有安装，请调用如下命令自行安装:**_
+
+```
+sudo apt install ros-[ROS_DISTRO]-rviz
+```
+
+##### 3.3gazebo
+
+Gazebo是一款3D动态模拟器，用于显示机器人模型并创建仿真环境,能够在复杂的室内和室外环境中准确有效地模拟机器人。与游戏引擎提供高保真度的视觉模拟类似，Gazebo提供高保真度的物理模拟，其提供一整套传感器模型，以及对用户和程序非常友好的交互方式。
+
+以“ros- \[ROS\_DISTRO\] -desktop-full”命令安装ROS时，gzebo会默认被安装。
+
+运行使用命令`gazebo`或`rosrun gazebo_ros gazebo`
+
+**注意1:**_**在 Ubuntu20.04 与 ROS Noetic 环境下，gazebo 启动异常以及解决**_
+
+-   **问题1:**VMware: vmw\_ioctl\_command error Invalid argument(无效的参数)
+    
+    **解决:**
+    
+    `echo "export SVGA_VGPU10=0" >> ~/.bashrc`
+    
+    `source .bashrc`
+    
+-   **问题2:**\[Err\] \[REST.cc:205\] Error in REST request
+    
+    **解决:**`sudo gedit ~/.ignition/fuel/config.yaml`
+    
+    然后将`url : https://api.ignitionfuel.org`使用 # 注释
+    
+    再添加`url: https://api.ignitionrobotics.org`
+    
+-   **问题3:**启动时抛出异常:`[gazebo-2] process has died [pid xxx, exit code 255, cmd.....`
+    
+    **解决:**`killall gzserver`和`killall gzclient`
+    
+
+**注意2:**_**如果 gazebo没有安装，请自行安装:**_
+
+1.添加源:
+
+```shell
+sudo sh -c 'echo "deb http://packages.osrfoundation.org/gazebo/ubuntu-stable `lsb_release -cs` main" 
+&gt;
+ /etc/apt/sources.list.d/gazebo-stable.list'
+```
+
+```shell
+wget http://packages.osrfoundation.org/gazebo.key -O - | sudo apt-key add -
+```
+
+2.安装：
+
+```
+sudo apt update
+```
+
+```
+sudo apt install gazebo11 
+sudo apt install libgazebo11-dev
+```
+
+___
+
+**另请参考:**
+
+-   [https://wiki.ros.org/urdf](https://wiki.ros.org/urdf)
+    
+-   [http://wiki.ros.org/rviz](http://wiki.ros.org/rviz)
+    
+-   [http://gazebosim.org/tutorials?tut=ros\_overview](http://gazebosim.org/tutorials?tut=ros_overview)
+    
+
+**课程说明:**
+
+机器人的系统仿真是一种集成实现，主要包含三部分:
+
+-   URDF 用于创建机器人模型
+    
+-   Gzebo 用于搭建仿真环境
+    
+-   Rviz 图形化的显示机器人各种传感器感知到的环境信息
+    
+
+三者应用中，只是创建 URDF 意义不大，一般需要结合 Gazebo 或 Rviz 使用，在 Gazebo 或 Rviz 中可以将 URDF 文件解析为图形化的机器人模型，一般的使用组合为:
+
+-   如果非仿真环境，那么使用 URDF 结合 Rviz 直接显示感知的真实环境信息
+    
+-   如果是仿真环境，那么需要使用 URDF 结合 Gazebo 搭建仿真环境，并结合 Rviz 显示感知的虚拟环境信息
+    
+
+后续课程安排:
+
+-   先介绍 URDF 与 Rviz 集成使用，在 Rviz 中只是显示机器人模型，主要用于学习 URDF 语法
+    
+-   再介绍 URDF 与 Gazebo 集成，主要学习 URDF 仿真相关语法以及仿真环境搭建
+    
+-   最后集成 URDF 与 Gazebo 与 Rviz，实现综合应用
+    
+
+素材链接:
+
+-   [https://github.com/zx595306686/sim\_demo.git](https://github.com/zx595306686/sim_demo.git)
+
+### 6.2 rviz打开urtf
+
+前面介绍过，URDF 不能单独使用，需要结合 Rviz 或 Gazebo，URDF 只是一个文件，需要在 Rviz 或 Gazebo 中渲染成图形化的机器人模型，当前，首先演示URDF与Rviz的集成使用，因为URDF与Rviz的集成较之于URDF与Gazebo的集成更为简单，后期，基于Rviz的集成实现，我们再进一步介绍URDF语法。
+
+**需求描述:**
+
+在 Rviz 中显示一个盒状机器人
+
+**结果演示:**![](pic_linux/02_URDF文件执行rviz配置02.png)
+
+**实现流程：**
+
+1.  准备:新建功能包，导入依赖
+    
+2.  核心:编写 urdf 文件
+    
+3.  核心:在 launch 文件集成 URDF 与 Rviz
+    
+4.  在 Rviz 中显示机器人模型
+    
+
+#### 1.创建功能包，导入依赖
+
+创建一个新的功能包，名称自定义，导入依赖包:`urdf`与`xacro`
+
+在当前功能包下，再新建几个目录:
+
+`urdf`: 存储 urdf 文件的目录
+
+`meshes`:机器人模型渲染文件(暂不使用)
+
+`config`: 配置文件
+
+`launch`: 存储 launch 启动文件
+
+#### 2.编写 URDF 文件
+
+新建一个子级文件夹:`urdf`(可选)，文件夹中添加一个`.urdf`文件,复制如下内容:
+
+demo01_helloworld.urdf
+
+```xml
+<robot name="mycar">
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <box size="0.5 0.2 0.1" />
+            </geometry>
+        </visual>
+    </link>
+</robot>
+```
+
+#### 3.在 launch 文件中集成 URDF 与 Rviz
+
+在`launch`目录下，新建一个 launch 文件，该 launch 文件需要启动 Rviz，并导入 urdf 文件，Rviz 启动后可以自动载入解析`urdf`文件，并显示机器人模型，核心问题:如何导入 urdf 文件? 在 ROS 中，可以将 urdf 文件的路径设置到参数服务器，使用的参数名是:`robot_description`,示例代码如下:
+
+```xml
+<launch>
+
+    <!-- 设置参数 -->
+    <param name="robot_description" textfile="$(find urdf01_rviz)/urdf/urdf/demo01_helloworld.urdf" />
+
+    <!-- 启动 rviz -->
+    <node pkg="rviz" type="rviz" name="rviz" />
+
+</launch>
+```
+
+#### 4.在 Rviz 中显示机器人模型
+
+rviz 启动后，会发现并没有盒装的机器人模型，这是因为默认情况下没有添加机器人显示组件，需要手动添加，添加方式如下:![](pic_linux/01_URDF文件执行rviz配置01.png)![](pic_linux/02_URDF文件执行rviz配置02.png)设置完毕后，可以正常显示了
+
+#### 5.优化 rviz 启动
+
+重复启动`launch`文件时，Rviz 之前的组件配置信息不会自动保存，需要重复执行步骤4的操作，为了方便使用，可以使用如下方式优化:
+
+首先，将当前配置保存进`config`目录![](pic_linux/10_rviz配置保存.png)然后，`launch`文件中 Rviz 的启动配置添加参数:`args`,值设置为`-d 配置文件路径`
+
+demo01_helloworld.launch
+
+```xml
+<launch>
+
+    <!-- 设置参数 -->
+    <param name="robot_description" textfile="$(find urdf01_rviz)/urdf/urdf/demo01_helloworld.urdf" />
+
+    <!-- 启动 rviz -->
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find urdf01_rviz)/config/show_mycar.rviz" />
+
+</launch>
+```
+
+再启动时，就可以包含之前的组件配置了，使用更方便快捷。
+
+### 6.3 URDF语法详解
+
+URDF 文件是一个标准的 XML 文件，在 ROS 中预定义了一系列的标签用于描述机器人模型，机器人模型可能较为复杂，但是 ROS 的 URDF 中机器人的组成却是较为简单，可以主要简化为两部分:连杆(link标签) 与 关节(joint标签)，接下来我们就通过案例了解一下 URDF 中的不同标签:
+
+-   robot 根标签，类似于 launch文件中的launch标签
+-   link 连杆标签
+-   joint 关节标签
+-   gazebo 集成gazebo需要使用的标签
+
+关于gazebo标签，后期在使用 gazebo 仿真时，才需要使用到，用于配置仿真环境所需参数，比如: 机器人材料属性、gazebo插件等，但是该标签不是机器人模型必须的，只有在仿真时才需设置
+
+___
+
+**另请参考:**
+
+-   [https://wiki.ros.org/urdf/XML](https://wiki.ros.org/urdf/XML)
+
+
+
+#### 6.3.1 01\_robot
+
+robot
+
+urdf 中为了保证 xml 语法的完整性，使用了`robot`标签作为根标签，所有的 link 和 joint 以及其他标签都必须包含在 robot 标签内,在该标签内可以通过 name 属性设置机器人模型的名称
+
+1.属性
+
+name: 指定机器人模型的名称
+
+2.子标签
+
+其他标签都是子级标签
+
+#### 6.3.2 02\_link
+
+link
+
+urdf 中的 link 标签用于描述机器人某个部件(也即刚体部分)的外观和物理属性，比如: 机器人底座、轮子、激光雷达、摄像头...每一个部件都对应一个 link, 在 link 标签内，可以设计该部件的形状、尺寸、颜色、惯性矩阵、碰撞参数等一系列属性![](http://www.autolabor.com.cn/book/assets/%E5%AE%98%E6%96%B901_link.png)
+
+1.属性
+
+-   name ---> 为连杆命名
+
+2.子标签
+
+-   visual ---> 描述外观(对应的数据是可视的)
+    
+    -   geometry 设置连杆的形状
+        
+        -   标签1: box(盒状)
+            
+            -   属性:size=长(x) 宽(y) 高(z)
+        -   标签2: cylinder(圆柱)
+            
+            -   属性:radius=半径 length=高度
+        -   标签3: sphere(球体)
+            
+            -   属性:radius=半径
+        -   标签4: mesh(为连杆添加皮肤)
+            
+            -   属性: filename=资源路径(格式:**package://<packagename>/<path>/文件**)
+    -   origin 设置偏移量与倾斜弧度
+        
+        -   属性1: xyz=x偏移 y便宜 z偏移
+            
+        -   属性2: rpy=x翻滚 y俯仰 z偏航 (单位是弧度)
+        
+    -   metrial 设置材料属性(颜色)
+        
+        -   属性: name
+            
+        -   标签: color
+            
+            -   属性: rgba=红绿蓝权重值与透明度 (每个权重值以及透明度取值\[0,1\])
+-   collision ---> 连杆的碰撞属性
+    
+-   Inertial ---> 连杆的惯性矩阵
+    
+
+在此，只演示`visual`使用。
+
+3.案例
+
+**需求:**分别生成长方体、圆柱与球体的机器人部件
+
+demo02_link.urdf
+
+```xml
+<robot name="mycar">
+    <link name="base_link">
+        <visual>
+            <!-- 形状 -->
+            <geometry>
+                <!-- 长方体的长宽高 -->
+                <!-- <box size="0.5 0.3 0.1" /> -->
+                <!-- 圆柱，半径和长度 -->
+                <!-- <cylinder radius="0.5" length="0.1" /> -->
+                <!-- 球体，半径-->
+                <!-- <sphere radius="0.3" /> -->
+                <!-- 皮肤 -->
+                <mesh filename="package://urdf01_rviz/meshes/autolabor_mini.stl" />               
+
+            </geometry>
+            <!-- xyz坐标 rpy翻滚俯仰与偏航角度(3.14=180度 1.57=90度) -->
+            <origin xyz="0 0 0" rpy="1.57 0 0" />
+            <!-- 颜色: r=red g=green b=blue a=透明度 0~1-->
+            <material name="car_color"> -->
+                <color rgba="0.7 0.5 0 0.5" />
+            </material>
+        </visual>
+    </link>
+</robot>    
+```
+
+demo02_link.launch
+
+```xml
+<launch>
+
+    <!-- 设置参数 -->
+    <param name="robot_description" textfile="$(find urdf01_rviz)/urdf/urdf/demo02_link.urdf" />
+
+    <!-- 启动 rviz -->
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find urdf01_rviz)/config/show_mycar.rviz" />
+
+</launch>
+```
+
+
+
+___
+
+#### 6.3.3 03\_joint
+
+joint
+
+urdf 中的 joint 标签用于描述机器人关节的运动学和动力学属性，还可以指定关节运动的安全极限，机器人的两个部件(分别称之为 parent link 与 child link)以"关节"的形式相连接，不同的关节有不同的运动形式: 旋转、滑动、固定、旋转速度、旋转角度限制....,比如:安装在底座上的轮子可以360度旋转，而摄像头则可能是完全固定在底座上。
+
+joint标签对应的数据在模型中是不可见的![](http://www.autolabor.com.cn/book/assets/%E5%AE%98%E6%96%B902_link.png)
+
+1.属性
+
+-   name ---> 为关节命名
+    
+-   type ---> 关节运动形式
+    
+    -   continuous: 旋转关节，可以绕单轴无限旋转
+        
+    -   revolute: 旋转关节，类似于 continues,但是有旋转角度限制
+        
+    -   prismatic: 滑动关节，沿某一轴线移动的关节，有位置极限
+        
+    -   planer: 平面关节，允许在平面正交方向上平移或旋转
+        
+    -   floating: 浮动关节，允许进行平移、旋转运动
+        
+    -   fixed: 固定关节，不允许运动的特殊关节
+        
+
+2.子标签
+
+-   parent(必需的)
+    
+    parent link的名字是一个强制的属性：
+    
+    -   link:父级连杆的名字，是这个link在机器人结构树中的名字。
+-   child(必需的)
+    
+    child link的名字是一个强制的属性：
+    
+    -   link:子级连杆的名字，是这个link在机器人结构树中的名字。
+-   origin
+    
+    -   属性: xyz=各轴线上的偏移量 rpy=各轴线上的偏移弧度。
+-   axis
+    
+    -   属性: xyz用于设置围绕哪个关节轴运动。
+
+3.案例
+
+**需求:**创建机器人模型，底盘为长方体，在长方体的前面添加一摄像头，摄像头可以沿着 Z 轴 360 度旋转。
+
+**URDF文件示例如下:**
+
+```xml
+<!-- 
+    需求: 创建机器人模型，底盘为长方体，
+         在长方体的前面添加一摄像头，
+         摄像头可以沿着 Z 轴 360 度旋转
+
+ -->
+<robot name="mycar">
+    <!-- 底盘 -->
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <box size="0.5 0.2 0.1" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="blue">
+                <color rgba="0 0 1.0 0.5" />
+            </material>
+        </visual>
+    </link>
+
+    <!-- 摄像头 -->
+    <link name="camera">
+        <visual>
+            <geometry>
+                <box size="0.02 0.05 0.05" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="red">
+                <color rgba="1 0 0 0.5" />
+            </material>
+        </visual>
+    </link>
+
+    <!-- 关节 -->
+    <joint name="camera2baselink" type="continuous">
+        <parent link="base_link"/>
+        <child link="camera" />
+        <!-- 需要计算两个 link 的物理中心之间的偏移量 -->
+        <origin xyz="0.2 0 0.075" rpy="0 0 0" />
+        <axis xyz="0 0 1" />
+    </joint>
+
+</robot>
+```
+
+**launch文件示例如下:**
+
+```xml
+<launch>
+
+    <param name="robot_description" textfile="$(find urdf01_rviz)/urdf/urdf/demo03_joint.urdf" />
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find urdf01_rviz)/config/show_mycar.rviz" /> 
+
+    <!-- 添加关节状态发布节点 -->
+    <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher" />
+    <!-- 添加机器人状态发布节点 -->
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" />
+    <!-- 可选:用于控制关节运动的节点 -->
+    <!-- <node pkg="joint_state_publisher_gui" type="joint_state_publisher_gui" name="joint_state_publisher_gui" /> -->
+
+</launch>
+```
+
+PS:
+
+1.状态发布节点在此是必须的:
+
+2.关节运动控制节点(可选)，会生成关节控制的UI，用于测试关节运动是否正常。
+
+5.遇到问题以及解决
+
+**问题1:**
+
+命令行输出如下错误提示
+
+```shell
+UnicodeEncodeError: 'ascii' codec can't encode characters in position 463-464: ordinal not in range(128)
+[joint_state_publisher-3] process has died [pid 4443, exit code 1, cmd /opt/ros/melodic/lib/joint_state_publisher/joint_state_publisher __name:=joint_state_publisher __log:=/home/rosmelodic/.ros/log/b38967c0-0acb-11eb-aee3-0800278ee10c/joint_state_publisher-3.log].
+log file: /home/rosmelodic/.ros/log/b38967c0-0acb-11eb-aee3-0800278ee10c/joint_state_publisher-3*.log
+```
+
+rviz中提示坐标变换异常，导致机器人部件显示结构异常
+
+**原因:**编码问题导致的
+
+**解决:**去除URDF中的中文注释
+
+**问题2:**\[ERROR\] \[1584370263.037038\]: Could not find the GUI, install the 'joint\_state\_publisher\_gui' package
+
+**解决:**`sudo apt install ros-noetic-joint-state-publisher-gui`
+
+```shell
+UnicodeEncodeError: 'ascii' codec can't encode characters in position 10-11: ordinal not in range(128)
+```
+
+[解决方案](https://www.cnblogs.com/yhl-yh/p/6728567.html)： 问题可能是urdf文件里有中文注释    
+
+在相应路径 /opt/ros/melodic/lib/joint_state_publisher 给相关文件添加权限 
+
+```
+sudo chmod 777 joint_state_publisher
+```
+
+分别在相应py文件里添加 
+
+```shell
+    import sys  
+    reload(sys)  
+    sys.setdefaultencoding('utf8')   
+```
