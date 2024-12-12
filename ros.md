@@ -8036,7 +8036,7 @@ joint
 
 urdf 中的 joint 标签用于描述机器人关节的运动学和动力学属性，还可以指定关节运动的安全极限，机器人的两个部件(分别称之为 parent link 与 child link)以"关节"的形式相连接，不同的关节有不同的运动形式: 旋转、滑动、固定、旋转速度、旋转角度限制....,比如:安装在底座上的轮子可以360度旋转，而摄像头则可能是完全固定在底座上。
 
-joint标签对应的数据在模型中是不可见的![](http://www.autolabor.com.cn/book/assets/%E5%AE%98%E6%96%B902_link.png)
+joint标签对应的数据在模型中是不可见的
 
 1.属性
 
@@ -8154,6 +8154,132 @@ PS:
 
 5.遇到问题以及解决
 
+**base_footprint优化urdf**
+
+demo04_base_footprint.urdf
+
+```xml
+<!--
+
+    使用 base_footprint 优化
+
+-->
+<robot name="mycar">
+    <!-- 设置一个原点(机器人中心点的投影) -->
+    <link name="base_footprint">
+        <visual>
+            <geometry>
+                <sphere radius="0.001" />
+            </geometry>
+        </visual>
+    </link>
+
+    <!-- 添加底盘 -->
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <box size="0.5 0.2 0.1" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="blue">
+                <color rgba="0 0 1.0 0.5" />
+            </material>
+        </visual>
+    </link>
+
+    <!-- 底盘与原点连接的关节 -->
+    <joint name="base_link2base_footprint" type="fixed">
+        <parent link="base_footprint" />
+        <child link="base_link" />
+        <origin xyz="0 0 0.05" />
+    </joint>
+
+    <!-- 添加摄像头 -->
+    <link name="camera">
+        <visual>
+            <geometry>
+                <box size="0.02 0.05 0.05" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="red">
+                <color rgba="1 0 0 0.5" />
+            </material>
+        </visual>
+    </link>
+    <!-- 关节 -->
+    <joint name="camera2baselink" type="continuous">
+        <parent link="base_link"/>
+        <child link="camera" />
+        <origin xyz="0.2 0 0.075" rpy="0 0 0" />
+        <axis xyz="0 0 1" />
+    </joint>
+
+</robot>
+```
+
+demo04_base_footprint.launch
+
+```xml
+<!--
+
+    使用 base_footprint 优化
+
+-->
+<robot name="mycar">
+    <!-- 设置一个原点(机器人中心点的投影) -->
+    <link name="base_footprint">
+        <visual>
+            <geometry>
+                <sphere radius="0.001" />
+            </geometry>
+        </visual>
+    </link>
+
+    <!-- 添加底盘 -->
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <box size="0.5 0.2 0.1" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="blue">
+                <color rgba="0 0 1.0 0.5" />
+            </material>
+        </visual>
+    </link>
+
+    <!-- 底盘与原点连接的关节 -->
+    <joint name="base_link2base_footprint" type="fixed">
+        <parent link="base_footprint" />
+        <child link="base_link" />
+        <origin xyz="0 0 0.05" />
+    </joint>
+
+    <!-- 添加摄像头 -->
+    <link name="camera">
+        <visual>
+            <geometry>
+                <box size="0.02 0.05 0.05" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="red">
+                <color rgba="1 0 0 0.5" />
+            </material>
+        </visual>
+    </link>
+    <!-- 关节 -->
+    <joint name="camera2baselink" type="continuous">
+        <parent link="base_link"/>
+        <child link="camera" />
+        <origin xyz="0.2 0 0.075" rpy="0 0 0" />
+        <axis xyz="0 0 1" />
+    </joint>
+
+</robot>
+```
+
+
+
 **问题1:**
 
 命令行输出如下错误提示
@@ -8193,3 +8319,543 @@ sudo chmod 777 joint_state_publisher
     reload(sys)  
     sys.setdefaultencoding('utf8')   
 ```
+
+#### 6.3.4 urdf练习
+
+**需求描述:**
+
+创建一个四轮圆柱状机器人模型，机器人参数如下,底盘为圆柱状，半径 10cm，高 8cm，四轮由两个驱动轮和两个万向支撑轮组成，两个驱动轮半径为 3.25cm,轮胎宽度1.5cm，两个万向轮为球状，半径 0.75cm，底盘离地间距为 1.5cm(与万向轮直径一致)
+
+**结果演示:**![](pic_linux/URDF_test.PNG)**实现流程:**
+
+创建机器人模型可以分步骤实现
+
+1.  新建 urdf 文件，并与 launch 文件集成
+2.  搭建底盘
+3.  在底盘上添加两个驱动轮
+4.  在底盘上添加两个万向轮
+
+demo05_test.urdf
+
+```xml
+<robot name="mycar">
+    <!-- 设置 base_footprint  -->
+    <link name="base_footprint">
+        <visual>
+            <geometry>
+                <sphere radius="0.001" />
+            </geometry>
+        </visual>
+    </link>
+
+    <!-- 添加底盘 -->
+    <!-- 
+        参数
+            形状:圆柱 
+            半径:10     cm 
+            高度:8      cm 
+            离地:1.5    cm
+    -->
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <cylinder radius="0.1" length="0.08" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="yellow">
+                <color rgba="0.8 0.3 0.1 0.5" />
+            </material>
+        </visual>
+    </link>
+
+    <joint name="base_link2base_footprint" type="fixed">
+        <parent link="base_footprint" />
+        <child link="base_link"/>
+        <!-- 关节z上的高度 = 车体高度/2+离地间距 = 0.04+0.015 = 0.055 -->
+        <origin xyz="0 0 0.055" />
+    </joint>
+
+    <!-- 添加驱动轮 -->
+    <!--
+        驱动轮是侧翻的圆柱
+        参数
+            半径: 3.25 cm
+            宽度: 1.5  cm
+            颜色: 黑色
+        关节设置:
+            x = 0
+            y = 底盘的半径 + 轮胎宽度 / 2
+            z = 离地间距 + 底盘长度 / 2 - 轮胎半径 = 1.5 + 4 - 3.25 = 2.25(cm)
+            axis = 0 1 0
+    -->
+    <link name="left_wheel">
+        <visual>
+            <geometry>
+                <cylinder radius="0.0325" length="0.015" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="1.5705 0 0" />
+            <material name="black">
+                <color rgba="0.0 0.0 0.0 1.0" />
+            </material>
+        </visual>
+
+    </link>
+
+    <joint name="left_wheel2base_link" type="continuous">
+        <parent link="base_link" />
+        <child link="left_wheel" />
+        <origin xyz="0 0.1 -0.0225" />
+        <axis xyz="0 1 0" />
+    </joint>
+
+
+    <link name="right_wheel">
+        <visual>
+            <geometry>
+                <cylinder radius="0.0325" length="0.015" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="1.5705 0 0" />
+            <material name="black">
+                <color rgba="0.0 0.0 0.0 1.0" />
+            </material>
+        </visual>
+
+    </link>
+
+    <joint name="right_wheel2base_link" type="continuous">
+        <parent link="base_link" />
+        <child link="right_wheel" />
+        <origin xyz="0 -0.1 -0.0225" />
+        <axis xyz="0 1 0" />
+    </joint>
+
+    <!-- 添加万向轮(支撑轮) -->
+    <!--
+        参数
+            形状: 球体
+            半径: 0.75 cm
+            颜色: 黑色
+
+        关节设置:
+            x = 自定义(底盘半径 - 万向轮半径) = 0.1 - 0.0075 = 0.0925(cm)
+            y = 0
+            z = 底盘长度 / 2 + 离地间距 / 2 = 0.08 / 2 + 0.015 / 2 = 0.0475 
+            axis= 1 1 1
+    -->
+    <link name="front_wheel">
+        <visual>
+            <geometry>
+                <sphere radius="0.0075" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="black">
+                <color rgba="0.0 0.0 0.0 1.0" />
+            </material>
+        </visual>
+    </link>
+
+    <joint name="front_wheel2base_link" type="continuous">
+        <parent link="base_link" />
+        <child link="front_wheel" />
+        <origin xyz="0.0925 0 -0.0475" />
+        <axis xyz="1 1 1" />
+    </joint>
+
+    <link name="back_wheel">
+        <visual>
+            <geometry>
+                <sphere radius="0.0075" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="black">
+                <color rgba="0.0 0.0 0.0 1.0" />
+            </material>
+        </visual>
+    </link>
+
+    <joint name="back_wheel2base_link" type="continuous">
+        <parent link="base_link" />
+        <child link="back_wheel" />
+        <origin xyz="-0.0925 0 -0.0475" />
+        <axis xyz="1 1 1" />
+    </joint>
+</robot>
+```
+
+demo05_test.launch
+
+```xml
+<launch>
+    <!-- 将 urdf 文件内容设置进参数服务器 -->
+    <param name="robot_description" textfile="$(find urdf01_rviz)/urdf/urdf/demo05_test.urdf" />
+
+    <!-- 启动 rivz -->
+    <node pkg="rviz" type="rviz" name="rviz_test" args="-d $(find urdf01_rviz)/config/show_mycar.rviz" />
+
+    <!-- 启动机器人状态和关节状态发布节点 -->
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" />
+    <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher" />
+
+    <!-- 启动图形化的控制关节运动节点 -->
+    <node pkg="joint_state_publisher_gui" type="joint_state_publisher_gui" name="joint_state_publisher_gui" />
+
+</launch>
+```
+
+#### 6.3.5 urdf工具
+
+#### 6.3.5 URDF工具
+
+在 ROS 中，提供了一些工具来方便 URDF 文件的编写，比如:
+
+-   `check_urdf`命令可以检查复杂的 urdf 文件是否存在语法问题
+    
+-   `urdf_to_graphiz`命令可以查看 urdf 模型结构，显示不同 link 的层级关系
+    
+
+当然，要使用工具之前，首先需要安装，安装命令:`sudo apt install liburdfdom-tools`
+
+#### 1.check\_urdf 语法检查
+
+进入urdf文件所属目录，调用:`check_urdf urdf文件`，如果不抛出异常，说明文件合法,否则非法
+
+![](pic_linux/03_URDF文件检查_正常.png)
+
+![](pic_linux/04_URDF文件检查_异常.png)
+
+#### 2.urdf\_to\_graphiz 结构查看
+
+进入urdf文件所属目录，调用:`urdf_to_graphiz urdf文件`，当前目录下会生成 pdf 文件
+
+![](pic_linux/05_查看URDF文件模型结构.png)
+
+```shell
+book@100ask:~/ws/src/urdf01_rviz/urdf/urdf$ check_urdf demo05_test.urdf 
+robot name is: mycar
+---------- Successfully Parsed XML ---------------
+root Link: base_footprint has 1 child(ren)
+    child(1):  base_link
+        child(1):  back_wheel
+        child(2):  front_wheel
+        child(3):  left_wheel
+        child(4):  right_wheel
+book@100ask:~/ws/src/urdf01_rviz/urdf/urdf$ urdf_to_graphiz demo05_test.urdf 
+Created file mycar.gv
+Created file mycar.pdf
+book@100ask:~/ws/src/urdf01_rviz/urdf/urdf$ evince mycar.pdf
+```
+
+### 6.4 URDF优化_xacro
+
+前面 URDF 文件构建机器人模型的过程中，存在若干问题。
+
+> 问题1:在设计关节的位置时，需要按照一定的公式计算，公式是固定的，但是在 URDF 中依赖于人工计算，存在不便，容易计算失误，且当某些参数发生改变时，还需要重新计算。
+>
+> 问题2:URDF 中的部分内容是高度重复的，驱动轮与支撑轮的设计实现，不同轮子只是部分参数不同，形状、颜色、翻转量都是一致的，在实际应用中，构建复杂的机器人模型时，更是易于出现高度重复的设计，按照一般的编程涉及到重复代码应该考虑封装。
+>
+> ......
+
+如果在编程语言中，可以通过变量结合函数直接解决上述问题，在 ROS 中，已经给出了类似编程的优化方案，称之为:**Xacro**
+
+___
+
+**概念**
+
+Xacro 是 XML Macros 的缩写，Xacro 是一种 XML 宏语言，是可编程的 XML。
+
+**原理**
+
+Xacro 可以声明变量，可以通过数学运算求解，使用流程控制控制执行顺序，还可以通过类似函数的实现，封装固定的逻辑，将逻辑中需要的可变的数据以参数的方式暴露出去，从而提高代码复用率以及程序的安全性。
+
+**作用**
+
+较之于纯粹的 URDF 实现，可以编写更安全、精简、易读性更强的机器人模型文件，且可以提高编写效率。
+
+___
+
+**另请参考:**
+
+-   [http://wiki.ros.org/xacro](http://wiki.ros.org/xacro)
+
+#### 6.4.1 快速体验
+
+**目的:**简单了解 xacro 的基本语法。
+
+**需求描述:**
+
+使用xacro优化上一节案例中驱动轮实现，需要使用变量封装底盘的半径、高度，使用数学公式动态计算底盘的关节点坐标，使用 Xacro 宏封装轮子重复的代码并调用宏创建两个轮子(注意: 在此，演示 Xacro 的基本使用，不必要生成合法的 URDF )。
+
+**准备:**
+
+创建功能包，导入 urdf 与 xacro。
+
+1.Xacro文件编写
+
+编写 Xacro 文件，以变量的方式封装属性(常量半径、高度、车轮半径...)，以函数的方式封装重复实现(车轮的添加)。
+
+```xml
+<robot name="mycar" xmlns:xacro="http://wiki.ros.org/xacro">
+    <!-- 属性封装 -->
+    <xacro:property name="wheel_radius" value="0.0325" />
+    <xacro:property name="wheel_length" value="0.0015" />
+    <xacro:property name="PI" value="3.1415927" />
+    <xacro:property name="base_link_length" value="0.08" />
+    <xacro:property name="lidi_space" value="0.015" />
+
+    <!-- 宏 -->
+    <xacro:macro name="wheel_func" params="wheel_name flag" >
+        <link name="${wheel_name}_wheel">
+            <visual>
+                <geometry>
+                    <cylinder radius="${wheel_radius}" length="${wheel_length}" />
+                </geometry>
+
+                <origin xyz="0 0 0" rpy="${PI / 2} 0 0" />
+
+                <material name="wheel_color">
+                    <color rgba="0 0 0 0.3" />
+                </material>
+            </visual>
+        </link>
+
+        <!-- 3-2.joint -->
+        <joint name="${wheel_name}2link" type="continuous">
+            <parent link="base_link"  />
+            <child link="${wheel_name}_wheel" />
+            <!-- 
+                x 无偏移
+                y 车体半径
+                z z= 车体高度 / 2 + 离地间距 - 车轮半径
+
+            -->
+            <origin xyz="0 ${0.1 * flag} ${(base_link_length / 2 + lidi_space - wheel_radius) * -1}" rpy="0 0 0" />
+            <axis xyz="0 1 0" />
+        </joint>
+
+    </xacro:macro>
+    <xacro:wheel_func wheel_name="left" flag="1" />
+    <xacro:wheel_func wheel_name="right" flag="-1" />
+</robot>
+```
+
+2.Xacro文件转换成 urdf 文件
+
+命令行进入 xacro文件 所属目录，执行:`rosrun xacro xacro xxx.xacro > xxx.urdf`, 会将 xacro 文件解析为 urdf 文件，内容如下:
+
+```xml
+<?xml version="1.0" ?>
+<!-- =================================================================================== -->
+<!-- |    This document was autogenerated by xacro from test.xacro                     | -->
+<!-- |    EDITING THIS FILE BY HAND IS NOT RECOMMENDED                                 | -->
+<!-- =================================================================================== -->
+<robot name="mycar">
+  <link name="left_wheel">
+    <visual>
+      <geometry>
+        <cylinder length="0.0015" radius="0.0325"/>
+      </geometry>
+      <origin rpy="1.57079635 0 0" xyz="0 0 0"/>
+      <material name="wheel_color">
+        <color rgba="0 0 0 0.3"/>
+      </material>
+    </visual>
+  </link>
+  <!-- 3-2.joint -->
+  <joint name="left2link" type="continuous">
+    <parent link="base_link"/>
+    <child link="left_wheel"/>
+    <!-- 
+                x 无偏移
+                y 车体半径
+                z z= 车体高度 / 2 + 离地间距 - 车轮半径
+
+            -->
+    <origin rpy="0 0 0" xyz="0 0.1 -0.0225"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+  <link name="right_wheel">
+    <visual>
+      <geometry>
+        <cylinder length="0.0015" radius="0.0325"/>
+      </geometry>
+      <origin rpy="1.57079635 0 0" xyz="0 0 0"/>
+      <material name="wheel_color">
+        <color rgba="0 0 0 0.3"/>
+      </material>
+    </visual>
+  </link>
+  <!-- 3-2.joint -->
+  <joint name="right2link" type="continuous">
+    <parent link="base_link"/>
+    <child link="right_wheel"/>
+    <!-- 
+                x 无偏移
+                y 车体半径
+                z z= 车体高度 / 2 + 离地间距 - 车轮半径
+
+            -->
+    <origin rpy="0 0 0" xyz="0 -0.1 -0.0225"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+</robot>
+```
+
+注意: 该案例编写生成的是非法的 URDF 文件，目的在于演示 Xacro 的极简使用以及优点。
+
+#### 6.4.2 语法详解
+
+xacro 提供了可编程接口，类似于计算机语言，包括变量声明调用、函数声明与调用等语法实现。在使用 xacro 生成 urdf 时，根标签`robot`中必须包含命名空间声明:`xmlns:xacro="http://wiki.ros.org/xacro"`
+
+1.属性与算数运算
+
+用于封装 URDF 中的一些字段，比如: PAI 值，小车的尺寸，轮子半径 ....
+
+**属性定义**
+
+```xml
+<xacro:property name="xxxx" value="yyyy" />
+```
+
+**属性调用**
+
+```xml
+${属性名称}
+```
+
+**算数运算**
+
+```xml
+${数学表达式}
+```
+
+2.宏
+
+类似于函数实现，提高代码复用率，优化代码结构，提高安全性
+
+**宏定义**
+
+```xml
+<xacro:macro name="宏名称" params="参数列表(多参数之间使用空格分隔)">
+
+    .....
+
+    参数调用格式: ${参数名}
+
+</xacro:macro>
+```
+
+**宏调用**
+
+```xml
+<xacro:宏名称 参数1=xxx 参数2=xxx/>
+```
+
+3.文件包含
+
+机器人由多部件组成，不同部件可能封装为单独的 xacro 文件，最后再将不同的文件集成，组合为完整机器人，可以使用文件包含实现
+
+**文件包含**
+
+```xml
+<robot name="xxx" xmlns:xacro="http://wiki.ros.org/xacro">
+      <xacro:include filename="my_base.xacro" />
+      <xacro:include filename="my_camera.xacro" />
+      <xacro:include filename="my_laser.xacro" />
+      ....
+</robot>
+```
+
+属性与算数运算 实例
+
+demo02_field.urdf.xacro
+
+```xml
+<robot name="mycar" xmlns:xacro="http://wiki.ros.org/xacro">
+    <!-- 1.属性定义 -->
+    <xacro:property name="PI" value="3.1415927" />
+    <xacro:property name="radius" value="0.03" />
+    <!-- 2.属性调用 -->
+    <myUsePropertyxxx name="${PI}" />
+    <myUsePropertyxxx name="${radius}" />
+    <!-- 3.算数运算 -->
+    <myUsePropertyYyy result="${PI / 2}" />
+    <myUsePropertyYyy result="${radius * 2}" />
+
+</robot>
+```
+
+```shell
+book@100ask:~/ws/src/urdf01_rviz/urdf/xacro$ rosrun xacro xacro demo02_field.urdf.xacro 
+<?xml version="1.0" encoding="utf-8"?>
+<!-- =================================================================================== -->
+<!-- |    This document was autogenerated by xacro from demo02_field.urdf.xacro        | -->
+<!-- |    EDITING THIS FILE BY HAND IS NOT RECOMMENDED                                 | -->
+<!-- =================================================================================== -->
+<robot name="mycar">
+  <!-- 2.属性调用 -->
+  <myUsePropertyxxx name="3.1415927"/>
+  <myUsePropertyxxx name="0.03"/>
+  <!-- 3.算数运算 -->
+  <myUsePropertyYyy result="1.57079635"/>
+  <myUsePropertyYyy result="0.06"/>
+</robot>
+```
+
+宏定义 实例
+
+demo03_macro.urdf.xacro
+
+```xml
+<robot name="mycar" xmlns:xacro="http://wiki.ros.org/xacro">
+    <!-- 1.宏定义 -->
+    <xacro:macro name="getSum" params="num1 num2">
+        <result value="${num1 + num2}" />
+    </xacro:macro>
+    <!-- 2.宏调用 -->
+    <xacro:getSum num1="1" num2="5" />
+
+</robot>
+```
+
+```shell
+book@100ask:~/ws/src/urdf01_rviz/urdf/xacro$ rosrun xacro xacro demo03_macro.urdf.xacro 
+<?xml version="1.0" encoding="utf-8"?>
+<!-- =================================================================================== -->
+<!-- |    This document was autogenerated by xacro from demo03_macro.urdf.xacro        | -->
+<!-- |    EDITING THIS FILE BY HAND IS NOT RECOMMENDED                                 | -->
+<!-- =================================================================================== -->
+<robot name="mycar">
+  <result value="6"/>
+</robot>
+```
+
+文件包含实例
+
+demo04_sum.urdf.xacro 
+
+```xml
+<robot name="mycar" xmlns:xacro="http://wiki.ros.org/xacro">
+    <!-- 演示文件包含 -->
+    <xacro:include filename="demo02_field.urdf.xacro" />
+    <xacro:include filename="demo03_macro.urdf.xacro" />
+</robot>
+```
+
+```shell
+book@100ask:~/ws/src/urdf01_rviz/urdf/xacro$ rosrun xacro xacro demo04_sum.urdf.xacro 
+<?xml version="1.0" encoding="utf-8"?>
+<!-- =================================================================================== -->
+<!-- |    This document was autogenerated by xacro from demo04_sum.urdf.xacro          | -->
+<!-- |    EDITING THIS FILE BY HAND IS NOT RECOMMENDED                                 | -->
+<!-- =================================================================================== -->
+<robot name="mycar">
+  <!-- 2.属性调用 -->
+  <myUsePropertyxxx name="3.1415927"/>
+  <myUsePropertyxxx name="0.03"/>
+  <!-- 3.算数运算 -->
+  <myUsePropertyYyy result="1.57079635"/>
+  <myUsePropertyYyy result="0.06"/>
+  <result value="6"/>
+</robot>
+```
+
