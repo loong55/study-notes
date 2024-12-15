@@ -10063,3 +10063,572 @@ ___
 **另请参考:**
 
 -   [http://gazebosim.org/tutorials?tut=ros\_gzplugins](http://gazebosim.org/tutorials?tut=ros_gzplugins)
+
+
+
+#### 6.7.1 机器人运动控制以及里程计信息显示
+
+gazebo 中已经可以正常显示机器人模型了，那么如何像在 rviz 中一样控制机器人运动呢？在此，需要涉及到ros中的组件: ros\_control。
+
+1.ros\_control 简介
+
+**场景:**同一套 ROS 程序，如何部署在不同的机器人系统上，比如：开发阶段为了提高效率是在仿真平台上测试的，部署时又有不同的实体机器人平台，不同平台的实现是有差异的，如何保证 ROS 程序的可移植性？ROS 内置的解决方式是 ros\_control。
+
+**ros\_control:**是一组软件包，它包含了控制器接口，控制器管理器，传输和硬件接口。ros\_control 是一套机器人控制的中间件，是一套规范，不同的机器人平台只要按照这套规范实现，那么就可以保证 与ROS 程序兼容，通过这套规范，实现了一种可插拔的架构设计，大大提高了程序设计的效率与灵活性。
+
+gazebo 已经实现了 ros\_control 的相关接口，如果需要在 gazebo 中控制机器人运动，直接调用相关接口即可
+
+2.运动控制实现流程(Gazebo)
+
+承上，运动控制基本流程:
+
+1.  已经创建完毕的机器人模型，编写一个单独的 xacro 文件，为机器人模型添加传动装置以及控制器
+    
+2.  将此文件集成进xacro文件
+    
+3.  启动 Gazebo 并发布 /cmd\_vel 消息控制机器人运动
+    
+
+2.1 为 joint 添加传动装置以及控制器
+
+两轮差速配置
+
+/home/book/ws/src/urdf02_gazebo/urdf/gazebo/move.xacro
+
+```xml
+<robot name="my_car_move" xmlns:xacro="http://wiki.ros.org/xacro">
+
+
+    <xacro:macro name="joint_trans" params="joint_name">
+        <!-- Transmission is important to link the joints and the controller -->
+        <transmission name="${joint_name}_trans">
+            <type>transmission_interface/SimpleTransmission</type>
+            <joint name="${joint_name}">
+                <hardwareInterface>hardware_interface/VelocityJointInterface</hardwareInterface>
+            </joint>
+            <actuator name="${joint_name}_motor">
+                <hardwareInterface>hardware_interface/VelocityJointInterface</hardwareInterface>
+                <mechanicalReduction>1</mechanicalReduction>
+            </actuator>
+        </transmission>
+    </xacro:macro>
+
+
+    <xacro:joint_trans joint_name="left_wheel2base_link" />
+    <xacro:joint_trans joint_name="right_wheel2base_link" />
+
+
+    <gazebo>
+        <plugin name="differential_drive_controller" filename="libgazebo_ros_diff_drive.so">
+            <rosDebugLevel>Debug</rosDebugLevel>
+            <publishWheelTF>true</publishWheelTF>
+            <robotNamespace>/</robotNamespace>
+            <publishTf>1</publishTf>
+            <publishWheelJointState>true</publishWheelJointState>
+            <alwaysOn>true</alwaysOn>
+            <updateRate>100.0</updateRate>
+            <legacyMode>true</legacyMode>
+            <leftJoint>left_wheel2base_link</leftJoint> 
+            <rightJoint>right_wheel2base_link</rightJoint> 
+            <wheelSeparation>${base_link_radius * 2}</wheelSeparation> 
+            <wheelDiameter>${wheel_radius * 2}</wheelDiameter> 
+            <broadcastTF>1</broadcastTF>
+            <wheelTorque>30</wheelTorque>
+            <wheelAcceleration>1.8</wheelAcceleration>
+            <commandTopic>cmd_vel</commandTopic> 
+            <odometryFrame>odom</odometryFrame> 
+            <odometryTopic>odom</odometryTopic> 
+            <robotBaseFrame>base_footprint</robotBaseFrame> 
+        </plugin>
+    </gazebo>
+
+</robot>
+```
+
+2.2 xacro文件集成
+
+最后还需要将上述 xacro 文件集成进总的机器人模型文件，代码示例如下:
+
+/home/book/ws/src/urdf02_gazebo/urdf/car.urdf.xacro
+
+```xml
+
+<robot name="my_car_camera" xmlns:xacro="http://wiki.ros.org/xacro">
+
+    <xacro:include filename="head.xacro" />
+
+    <xacro:include filename="demo05_car_base.urdf.xacro" />
+    <xacro:include filename="demo06_car_camera.urdf.xacro" />
+    <xacro:include filename="demo07_car_laser.urdf.xacro" />
+
+    <!-- move control-->
+    <xacro:include filename="gazebo/move.xacro" />
+
+    <!-- laser -->
+    <xacro:include filename="gazebo/laser.xacro" />
+
+    <!-- camera -->
+    <xacro:include filename="gazebo/camera.xacro" />
+
+    <!-- kinect -->
+    <xacro:include filename="gazebo/kinect.xacro" />
+
+</robot>
+```
+
+当前核心: 包含 控制器以及传动配置的 xacro 文件
+
+```xml
+<xacro:include filename="move.urdf.xacro" />
+```
+
+2.3 启动 gazebo并控制机器人运动
+
+launch文件:
+
+/home/book/ws/src/urdf02_gazebo/launch/demo03_env.launch
+
+```xml
+<launch>
+
+    <!-- 将 Urdf 文件的内容加载到参数服务器 -->
+    <param name="robot_description" command="$(find xacro)/xacro $(find urdf02_gazebo)/urdf/car.urdf.xacro" />
+
+    <!-- 启动 gazebo -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name" value="$(find urdf02_gazebo)/worlds/box_house.world" />
+    </include>
+
+    <!-- 在 gazebo 中显示机器人模型 -->
+    <node pkg="gazebo_ros" type="spawn_model" name="model" args="-urdf -model mycar -param robot_description"  />
+</launch>
+```
+
+启动 launch 文件，使用 topic list 查看话题列表，会发现多了 /cmd\_vel 然后发布 vmd\_vel 消息控制即可
+
+使用命令控制(或者可以编写单独的节点控制)
+
+```
+rostopic pub -r 10 /cmd_vel geometry_msgs/Twist '{linear: {x: 0.2, y: 0, z: 0}, angular: {x: 0, y: 0, z: 0.5}}'
+```
+
+接下来我们会发现: 小车在 Gazebo 中已经正常运行起来了![](pic_linux/gazebo运动控制.gif)
+
+3.Rviz查看里程计信息
+
+在 Gazebo 的仿真环境中，机器人的里程计信息以及运动朝向等信息是无法获取的，可以通过 Rviz 显示机器人的里程计信息以及运动朝向
+
+**里程计:** 机器人相对出发点坐标系的位姿状态(X 坐标 Y 坐标 Z坐标以及朝向)。
+
+3.1启动 Rviz
+
+launch 文件
+
+/home/book/ws/src/urdf02_gazebo/launch/demo04_sensor.launch
+
+```xml
+<launch>
+    <!-- 添加点云坐标系到kinet连杆坐标系的n变换 -->
+    <!-- args: x y z 绕z 绕y 绕x 父级坐标系 子级坐标系-->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="static_transform_publisher" args="0 0 0 -1.57 0 -1.57 /support /support_depth" />
+
+    <!-- 先运行dmeo03启动gazebo,此时已经将robot_description载入了参数服务器，此时无需重复载入，启动rviz会自动调用参数服务器 -->
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find urdf01_rviz)/config/base_footprint.rviz" />
+    <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher" output="screen" />
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen" />
+    
+</launch>
+```
+
+3.2 添加组件
+
+执行 launch 文件后，在 Rviz 中添加图示组件:![](pic_linux/21_Rviz显示里程计数据.png)
+
+
+
+#### 6.7.2 雷达信息仿真以及显示
+
+通过 Gazebo 模拟激光雷达传感器，并在 Rviz 中显示激光数据。
+
+**实现流程:**
+
+雷达仿真基本流程:
+
+1.  已经创建完毕的机器人模型，编写一个单独的 xacro 文件，为机器人模型添加雷达配置；
+    
+2.  将此文件集成进xacro文件；
+    
+3.  启动 Gazebo，使用 Rviz 显示雷达信息。
+    
+
+1.Gazebo 仿真雷达
+
+1.1 新建 Xacro 文件，配置雷达传感器信息
+
+/home/book/ws/src/urdf02_gazebo/urdf/gazebo/laser.xacro
+
+```xml
+<robot name="my_sensors" xmlns:xacro="http://wiki.ros.org/xacro">
+
+  <!-- laser -->
+  <!-- modeif there from demo07_car_laser...(laser's name) -->
+  <gazebo reference="laser">    
+    <sensor type="ray" name="rplidar">
+      <pose>0 0 0 0 0 0</pose>
+      <visualize>true</visualize>
+      <update_rate>5.5</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>360</samples>
+            <resolution>1</resolution>
+            <min_angle>-3</min_angle>
+            <max_angle>3</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.10</min>
+          <max>30.0</max>
+          <resolution>0.01</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </ray>
+      <plugin name="gazebo_rplidar" filename="libgazebo_ros_laser.so">
+        <!-- topic name -->
+        <topicName>/scan</topicName>
+        <!-- modeif there from demo07_car_laser...(laser's name) -->
+        <frameName>laser</frameName>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+</robot>
+```
+
+1.2 xacro 文件集成
+
+将步骤1的 Xacro 文件集成进总的机器人模型文件，代码示例如下:
+
+/home/book/ws/src/urdf02_gazebo/urdf/car.urdf.xacro
+
+```xml
+
+<robot name="my_car_camera" xmlns:xacro="http://wiki.ros.org/xacro">
+
+    <xacro:include filename="head.xacro" />
+
+    <xacro:include filename="demo05_car_base.urdf.xacro" />
+    <xacro:include filename="demo06_car_camera.urdf.xacro" />
+    <xacro:include filename="demo07_car_laser.urdf.xacro" />
+
+    <!-- move control-->
+    <xacro:include filename="gazebo/move.xacro" />
+
+    <!-- laser -->
+    <xacro:include filename="gazebo/laser.xacro" />
+
+    <!-- camera -->
+    <xacro:include filename="gazebo/camera.xacro" />
+
+    <!-- kinect -->
+    <xacro:include filename="gazebo/kinect.xacro" />
+
+</robot>
+```
+
+1.3启动仿真环境
+
+编写launch文件，启动gazebo，此处略...
+
+2.Rviz 显示雷达数据
+
+先启动 rviz,添加雷达信息显示插件![](pic_linux/雷达仿真2-17342612850384.PNG)
+
+
+
+#### 6.7.3 摄像头信息仿真以及显示
+
+通过 Gazebo 模拟摄像头传感器，并在 Rviz 中显示摄像头数据。
+
+**实现流程:**
+
+摄像头仿真基本流程:
+
+1.  已经创建完毕的机器人模型，编写一个单独的 xacro 文件，为机器人模型添加摄像头配置；
+    
+2.  将此文件集成进xacro文件；
+    
+3.  启动 Gazebo，使用 Rviz 显示摄像头信息。
+    
+
+1.Gazebo 仿真摄像头
+
+1.1 新建 Xacro 文件，配置摄像头传感器信息
+
+camera.xacro
+
+```xml
+<robot name="my_sensors" xmlns:xacro="http://wiki.ros.org/xacro">
+  <!-- link -->
+  <gazebo reference="camera">
+    <!-- type= camara -->
+    <sensor type="camera" name="camera_node">
+      <update_rate>30.0</update_rate> <!-- update ferquency -->
+      <!-- camera baseic date -->
+      <camera name="head">
+        <horizontal_fov>1.3962634</horizontal_fov>
+        <image>
+          <width>1280</width>
+          <height>720</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.02</near>
+          <far>300</far>
+        </clip>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.007</stddev>
+        </noise>
+      </camera>
+      <!-- core plugin -->
+      <plugin name="gazebo_camera" filename="libgazebo_ros_camera.so">
+        <alwaysOn>true</alwaysOn>
+        <updateRate>0.0</updateRate>
+        <cameraName>/camera</cameraName>
+        <imageTopicName>image_raw</imageTopicName>
+        <cameraInfoTopicName>camera_info</cameraInfoTopicName>
+        <frameName>camera</frameName>
+        <hackBaseline>0.07</hackBaseline>
+        <distortionK1>0.0</distortionK1>
+        <distortionK2>0.0</distortionK2>
+        <distortionK3>0.0</distortionK3>
+        <distortionT1>0.0</distortionT1>
+        <distortionT2>0.0</distortionT2>
+      </plugin>
+    </sensor>
+  </gazebo>
+</robot>
+```
+
+1.2 xacro 文件集成
+
+将步骤1的 Xacro 文件集成进总的机器人模型文件，代码示例如下:
+
+/home/book/ws/src/urdf02_gazebo/urdf/car.urdf.xacro
+
+```xml
+
+<robot name="my_car_camera" xmlns:xacro="http://wiki.ros.org/xacro">
+
+    <xacro:include filename="head.xacro" />
+
+    <xacro:include filename="demo05_car_base.urdf.xacro" />
+    <xacro:include filename="demo06_car_camera.urdf.xacro" />
+    <xacro:include filename="demo07_car_laser.urdf.xacro" />
+
+    <!-- move control-->
+    <xacro:include filename="gazebo/move.xacro" />
+
+    <!-- laser -->
+    <xacro:include filename="gazebo/laser.xacro" />
+
+    <!-- camera -->
+    <xacro:include filename="gazebo/camera.xacro" />
+
+    <!-- kinect -->
+    <xacro:include filename="gazebo/kinect.xacro" />
+
+</robot>
+```
+
+1.3启动仿真环境
+
+编写launch文件，启动gazebo，此处略...
+
+2.Rviz 显示摄像头数据
+
+执行 gazebo 并启动 Rviz,在 Rviz 中添加摄像头组件。![](pic_linux/rgb摄像头.PNG)![](pic_linux/摄像头仿真3.png)
+
+#### 6.7.4 kinect信息仿真以及显示
+
+通过 Gazebo 模拟kinect摄像头，并在 Rviz 中显示kinect摄像头数据。
+
+**实现流程:**
+
+kinect摄像头仿真基本流程:
+
+1.  已经创建完毕的机器人模型，编写一个单独的 xacro 文件，为机器人模型添加kinect摄像头配置；
+    
+2.  将此文件集成进xacro文件；
+    
+3.  启动 Gazebo，使用 Rviz 显示kinect摄像头信息。
+    
+
+1.Gazebo仿真Kinect
+
+1.1 新建 Xacro 文件，配置 kinetic传感器信息
+
+/home/book/ws/src/urdf02_gazebo/urdf/gazebo/kinect.xacro
+
+```xml
+<robot name="my_sensors" xmlns:xacro="http://wiki.ros.org/xacro">
+    <gazebo reference="support">  
+      <sensor type="depth" name="camera">
+        <always_on>true</always_on>
+        <update_rate>20.0</update_rate>
+        <camera>
+          <horizontal_fov>${60.0*PI/180.0}</horizontal_fov>
+          <image>
+            <format>R8G8B8</format>
+            <width>640</width>
+            <height>480</height>
+          </image>
+          <clip>
+            <near>0.05</near>
+            <far>8.0</far>
+          </clip>
+        </camera>
+        <plugin name="kinect_camera_controller" filename="libgazebo_ros_openni_kinect.so">
+          <cameraName>camera</cameraName>
+          <alwaysOn>true</alwaysOn>
+          <updateRate>10</updateRate>
+          <imageTopicName>rgb/image_raw</imageTopicName>
+          <depthImageTopicName>depth/image_raw</depthImageTopicName>
+          <pointCloudTopicName>depth/points</pointCloudTopicName>
+          <cameraInfoTopicName>rgb/camera_info</cameraInfoTopicName>
+          <depthImageCameraInfoTopicName>depth/camera_info</depthImageCameraInfoTopicName>
+          <frameName>support_depth</frameName>
+          <baseline>0.1</baseline>
+          <distortion_k1>0.0</distortion_k1>
+          <distortion_k2>0.0</distortion_k2>
+          <distortion_k3>0.0</distortion_k3>
+          <distortion_t1>0.0</distortion_t1>
+          <distortion_t2>0.0</distortion_t2>
+          <pointCloudCutoff>0.4</pointCloudCutoff>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+</robot>
+```
+
+1.2 xacro 文件集成
+
+将步骤1的 Xacro 文件集成进总的机器人模型文件，代码示例如下:
+
+/home/book/ws/src/urdf02_gazebo/urdf/car.urdf.xacro
+
+```xml
+
+<robot name="my_car_camera" xmlns:xacro="http://wiki.ros.org/xacro">
+
+    <xacro:include filename="head.xacro" />
+
+    <xacro:include filename="demo05_car_base.urdf.xacro" />
+    <xacro:include filename="demo06_car_camera.urdf.xacro" />
+    <xacro:include filename="demo07_car_laser.urdf.xacro" />
+
+    <!-- move control-->
+    <xacro:include filename="gazebo/move.xacro" />
+
+    <!-- laser -->
+    <xacro:include filename="gazebo/laser.xacro" />
+
+    <!-- camera -->
+    <xacro:include filename="gazebo/camera.xacro" />
+
+    <!-- kinect -->
+    <xacro:include filename="gazebo/kinect.xacro" />
+
+</robot>
+```
+
+1.3启动仿真环境
+
+编写launch文件，启动gazebo，此处略...
+
+2 Rviz 显示 Kinect 数据
+
+启动 rviz,添加摄像头组件查看数据![](pic_linux/kinect摄像头.PNG)![](pic_linux/16_kinect仿真.png)
+
+___
+
+**补充:kinect 点云数据显示**
+
+在kinect中也可以以点云的方式显示感知周围环境，在 rviz 中操作如下:
+
+![](pic_linux/点云数据_默认.PNG)
+
+**问题:**在rviz中显示时错位。
+
+**原因:**在kinect中图像数据与点云数据使用了两套坐标系统，且两套坐标系统位姿并不一致。
+
+**解决:**
+
+1.在插件中为kinect设置坐标系，修改配置文件的`<frameName>`标签内容：
+
+/home/book/ws/src/urdf02_gazebo/urdf/gazebo/kinect.xacro
+
+```xml
+<frameName>support_depth</frameName>
+```
+
+2.发布新设置的坐标系到kinect连杆的坐标变换关系，在启动rviz的launch中，添加:
+
+```xml
+<node pkg="tf2_ros" type="static_transform_publisher" name="static_transform_publisher" args="0 0 0 -1.57 0 -1.57 /support /support_depth" />
+```
+
+/home/book/ws/src/urdf02_gazebo/launch/demo04_sensor.launch
+
+```xml
+<launch>
+    <!-- 添加点云坐标系到kinet连杆坐标系的n变换 -->
+    <!-- args: x y z 绕z 绕y 绕x 父级坐标系 子级坐标系-->
+    <node pkg="tf2_ros" type="static_transform_publisher" name="static_transform_publisher" args="0 0 0 -1.57 0 -1.57 /support /support_depth" />
+
+    <!-- 先运行dmeo03启动gazebo,此时已经将robot_description载入了参数服务器，此时无需重复载入，启动rviz会自动调用参数服务器 -->
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find urdf01_rviz)/config/base_footprint.rviz" />
+    <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher" output="screen" />
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen" />
+    
+</launch>
+```
+
+3.启动rviz，重新显示。
+
+![](pic_linux/点云数据_修正.PNG)
+
+### 6.8 本章小结
+
+本章主要介绍了ROS中仿真实现涉及的三大知识点:
+
+-   URDF(Xacro)
+-   Rviz
+-   Gazebo
+
+URDF 是用于描述机器人模型的 xml 文件，可以使用不同的标签具代表不同含义，URDF 编写机器人模型代码冗余，xacro 可以优化 URDF 实现，代码实现更为精简、高效、易读。容易混淆的是Rviz与Gazebo，在此我们着重比较以下二者的区别:
+
+> rviz是**三维可视化工具**，强调把已有的数据可视化显示；
+>
+> gazebo是**三维物理仿真平台**，强调的是创建一个虚拟的仿真环境。
+>
+> rviz需要**已有数据**。
+>
+> rviz提供了很多插件，这些插件可以显示图像、模型、路径等信息，但是前提都是这些数据已经以话题、参数的形式发布，rviz做的事情就是订阅这些数据，并完成可视化的渲染，让开发者更容易理解数据的意义。
+>
+> gazebo不是显示工具，强调的是仿真，**它不需要数据，而是创造数据**。
+>
+> 我们可以在gazebo中免费创建一个机器人世界，不仅可以仿真机器人的运动功能，还可以仿真机器人的传感器数据。而这些数据就可以放到rviz中显示，所以使用gazebo的时候，经常也会和rviz配合使用。当我们手上没有机器人硬件或实验环境难以搭建时，仿真往往是非常有用的利器。
+>
+> 综上，如果你手上已经有机器人硬件平台，并且在上边可以完成需要的功能，用rviz应该就可以满足开发需求。
+>
+> 如果你手上没有机器人硬件，或者想在仿真环境中做一些算法、应用的测试，gazebo+rviz应该是你需要的。
+>
+> 另外，rviz配合其他功能包也可以建立一个简单的仿真环境，比如rviz+ArbotiX。
