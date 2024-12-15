@@ -7803,7 +7803,7 @@ ___
 
 -   [https://github.com/zx595306686/sim\_demo.git](https://github.com/zx595306686/sim_demo.git)
 
-### 6.2 rviz打开urtf
+### 6.2 rviz打开urdf
 
 前面介绍过，URDF 不能单独使用，需要结合 Rviz 或 Gazebo，URDF 只是一个文件，需要在 Rviz 或 Gazebo 中渲染成图形化的机器人模型，当前，首先演示URDF与Rviz的集成使用，因为URDF与Rviz的集成较之于URDF与Gazebo的集成更为简单，后期，基于Rviz的集成实现，我们再进一步介绍URDF语法。
 
@@ -8859,3 +8859,1207 @@ book@100ask:~/ws/src/urdf01_rviz/urdf/xacro$ rosrun xacro xacro demo04_sum.urdf.
 </robot>
 ```
 
+#### 6.4.3 完整流程
+
+
+
+**需求描述:**
+
+使用 Xacro 优化 URDF 版的小车底盘模型实现
+
+**结果演示:**
+
+![](http://www.autolabor.com.cn/book/assets/URDF_test.PNG)
+
+1.编写 Xacro 文件
+
+```xml
+<!--
+    使用 xacro 优化 URDF 版的小车底盘实现：
+
+    实现思路:
+    1.将一些常量、变量封装为 xacro:property
+      比如:PI 值、小车底盘半径、离地间距、车轮半径、宽度 ....
+    2.使用 宏 封装驱动轮以及支撑轮实现，调用相关宏生成驱动轮与支撑轮
+
+-->
+<!-- 根标签，必须声明 xmlns:xacro -->
+<robot name="my_base" xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <!-- 封装变量、常量 -->
+    <xacro:property name="PI" value="3.141"/>
+    <!-- 宏:黑色设置 -->
+    <material name="black">
+        <color rgba="0.0 0.0 0.0 1.0" />
+    </material>
+    <!-- 底盘属性 -->
+    <xacro:property name="base_footprint_radius" value="0.001" /> <!-- base_footprint 半径  -->
+    <xacro:property name="base_link_radius" value="0.1" /> <!-- base_link 半径 -->
+    <xacro:property name="base_link_length" value="0.08" /> <!-- base_link 长 -->
+    <xacro:property name="earth_space" value="0.015" /> <!-- 离地间距 -->
+
+    <!-- 底盘 -->
+    <link name="base_footprint">
+      <visual>
+        <geometry>
+          <sphere radius="${base_footprint_radius}" />
+        </geometry>
+      </visual>
+    </link>
+
+    <link name="base_link">
+      <visual>
+        <geometry>
+          <cylinder radius="${base_link_radius}" length="${base_link_length}" />
+        </geometry>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <material name="yellow">
+          <color rgba="0.5 0.3 0.0 0.5" />
+        </material>
+      </visual>
+    </link>
+
+    <joint name="base_link2base_footprint" type="fixed">
+      <parent link="base_footprint" />
+      <child link="base_link" />
+      <origin xyz="0 0 ${earth_space + base_link_length / 2 }" />
+    </joint>
+
+    <!-- 驱动轮 -->
+    <!-- 驱动轮属性 -->
+    <xacro:property name="wheel_radius" value="0.0325" /><!-- 半径 -->
+    <xacro:property name="wheel_length" value="0.015" /><!-- 宽度 -->
+    <!-- 驱动轮宏实现 -->
+    <xacro:macro name="add_wheels" params="name flag">
+      <link name="${name}_wheel">
+        <visual>
+          <geometry>
+            <cylinder radius="${wheel_radius}" length="${wheel_length}" />
+          </geometry>
+          <origin xyz="0.0 0.0 0.0" rpy="${PI / 2} 0.0 0.0" />
+          <material name="black" />
+        </visual>
+      </link>
+
+      <joint name="${name}_wheel2base_link" type="continuous">
+        <parent link="base_link" />
+        <child link="${name}_wheel" />
+        <origin xyz="0 ${flag * base_link_radius} ${-(earth_space + base_link_length / 2 - wheel_radius) }" />
+        <axis xyz="0 1 0" />
+      </joint>
+    </xacro:macro>
+    <xacro:add_wheels name="left" flag="1" />
+    <xacro:add_wheels name="right" flag="-1" />
+    <!-- 支撑轮 -->
+    <!-- 支撑轮属性 -->
+    <xacro:property name="support_wheel_radius" value="0.0075" /> <!-- 支撑轮半径 -->
+
+    <!-- 支撑轮宏 -->
+    <xacro:macro name="add_support_wheel" params="name flag" >
+      <link name="${name}_wheel">
+        <visual>
+            <geometry>
+                <sphere radius="${support_wheel_radius}" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="black" />
+        </visual>
+      </link>
+
+      <joint name="${name}_wheel2base_link" type="continuous">
+          <parent link="base_link" />
+          <child link="${name}_wheel" />
+          <origin xyz="${flag * (base_link_radius - support_wheel_radius)} 0 ${-(base_link_length / 2 + earth_space / 2)}" />
+          <axis xyz="1 1 1" />
+      </joint>
+    </xacro:macro>
+
+    <xacro:add_support_wheel name="front" flag="1" />
+    <xacro:add_support_wheel name="back" flag="-1" />
+
+</robot>
+```
+
+2.集成launch文件
+
+**方式1:**先将 xacro 文件转换出 urdf 文件，然后集成
+
+先将 xacro 文件解析成 urdf 文件:`rosrun xacro xacro xxx.xacro > xxx.urdf`然后再按照之前的集成方式直接整合 launch 文件,内容示例:
+
+```xml
+<launch>
+    <param name="robot_description" textfile="$(find demo01_urdf_helloworld)/urdf/xacro/my_base.urdf" />
+
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find demo01_urdf_helloworld)/config/helloworld.rviz" />
+    <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher" output="screen" />
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen" />
+    <node pkg="joint_state_publisher_gui" type="joint_state_publisher_gui" name="joint_state_publisher_gui" output="screen" />
+
+</launch>
+```
+
+**方式2:**在 launch 文件中直接加载 xacro(**建议使用**)
+
+launch 内容示例:
+
+```xml
+<launch>
+    <param name="robot_description" command="$(find xacro)/xacro $(find urdf01_rviz)/urdf/xacro/demo05_car_base.urdf.xacro" />
+
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find urdf01_rviz)/config/base_footprint.rviz" />
+    <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher" output="screen" />
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen" />
+    <node pkg="joint_state_publisher_gui" type="joint_state_publisher_gui" name="joint_state_publisher_gui" output="screen" />
+
+</launch>
+```
+
+核心代码:
+
+```xml
+<param name="robot_description" command="$(find xacro)/xacro $(find demo01_urdf_helloworld)/urdf/xacro/my_base.urdf.xacro" />
+```
+
+加载`robot_description`时使用`command`属性，属性值就是调用 xacro 功能包的 xacro 程序直接解析 xacro 文件。
+
+#### 6.4.4 多文件实操
+
+**需求描述:**
+
+在前面小车底盘基础之上，添加摄像头和雷达传感器。
+
+**结果演示:**
+
+![](pic_linux/17_xacro案例-17340960315524.PNG)
+
+**实现分析:**
+
+机器人模型由多部件组成，可以将不同组件设置进单独文件，最终通过文件包含实现组件的拼装。
+
+**实现流程:**
+
+1.  首先编写摄像头和雷达的 xacro 文件
+    
+2.  然后再编写一个组合文件，组合底盘、摄像头与雷达
+    
+3.  最后，通过 launch 文件启动 Rviz 并显示模型
+    
+
+1.摄像头和雷达 Xacro 文件实现
+
+摄像头 xacro 文件:
+
+```xml
+<!-- 摄像头相关的 xacro 文件 -->
+<robot name="my_camera" xmlns:xacro="http://wiki.ros.org/xacro">
+    <!-- 摄像头属性 -->
+    <xacro:property name="camera_length" value="0.01" /> <!-- 摄像头长度(x) -->
+    <xacro:property name="camera_width" value="0.025" /> <!-- 摄像头宽度(y) -->
+    <xacro:property name="camera_height" value="0.025" /> <!-- 摄像头高度(z) -->
+    <xacro:property name="camera_x" value="0.08" /> <!-- 摄像头安装的x坐标 -->
+    <xacro:property name="camera_y" value="0.0" /> <!-- 摄像头安装的y坐标 -->
+    <xacro:property name="camera_z" value="${base_link_length / 2 + camera_height / 2}" /> <!-- 摄像头安装的z坐标:底盘高度 / 2 + 摄像头高度 / 2  -->
+
+    <!-- 摄像头关节以及link -->
+    <link name="camera">
+        <visual>
+            <geometry>
+                <box size="${camera_length} ${camera_width} ${camera_height}" />
+            </geometry>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+            <material name="black" />
+        </visual>
+    </link>
+
+    <joint name="camera2base_link" type="fixed">
+        <parent link="base_link" />
+        <child link="camera" />
+        <origin xyz="${camera_x} ${camera_y} ${camera_z}" />
+    </joint>
+</robot>
+```
+
+雷达 xacro 文件:
+
+```xml
+<!--
+    小车底盘添加雷达
+-->
+<robot name="my_laser" xmlns:xacro="http://wiki.ros.org/xacro">
+
+    <!-- 雷达支架 -->
+    <xacro:property name="support_length" value="0.15" /> <!-- 支架长度 -->
+    <xacro:property name="support_radius" value="0.01" /> <!-- 支架半径 -->
+    <xacro:property name="support_x" value="0.0" /> <!-- 支架安装的x坐标 -->
+    <xacro:property name="support_y" value="0.0" /> <!-- 支架安装的y坐标 -->
+    <xacro:property name="support_z" value="${base_link_length / 2 + support_length / 2}" /> <!-- 支架安装的z坐标:底盘高度 / 2 + 支架高度 / 2  -->
+
+    <link name="support">
+        <visual>
+            <geometry>
+                <cylinder radius="${support_radius}" length="${support_length}" />
+            </geometry>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+            <material name="red">
+                <color rgba="0.8 0.2 0.0 0.8" />
+            </material>
+        </visual>
+    </link>
+
+    <joint name="support2base_link" type="fixed">
+        <parent link="base_link" />
+        <child link="support" />
+        <origin xyz="${support_x} ${support_y} ${support_z}" />
+    </joint>
+
+
+    <!-- 雷达属性 -->
+    <xacro:property name="laser_length" value="0.05" /> <!-- 雷达长度 -->
+    <xacro:property name="laser_radius" value="0.03" /> <!-- 雷达半径 -->
+    <xacro:property name="laser_x" value="0.0" /> <!-- 雷达安装的x坐标 -->
+    <xacro:property name="laser_y" value="0.0" /> <!-- 雷达安装的y坐标 -->
+    <xacro:property name="laser_z" value="${support_length / 2 + laser_length / 2}" /> <!-- 雷达安装的z坐标:支架高度 / 2 + 雷达高度 / 2  -->
+
+    <!-- 雷达关节以及link -->
+    <link name="laser">
+        <visual>
+            <geometry>
+                <cylinder radius="${laser_radius}" length="${laser_length}" />
+            </geometry>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+            <material name="black" />
+        </visual>
+    </link>
+
+    <joint name="laser2support" type="fixed">
+        <parent link="support" />
+        <child link="laser" />
+        <origin xyz="${laser_x} ${laser_y} ${laser_z}" />
+    </joint>
+</robot>
+```
+
+2.组合底盘摄像头与雷达的 xacro 文件
+
+```xml
+<!-- 组合小车底盘与摄像头与雷达 -->
+<robot name="my_car_camera" xmlns:xacro="http://wiki.ros.org/xacro">
+    <xacro:include filename="my_base.urdf.xacro" />
+    <xacro:include filename="my_camera.urdf.xacro" />
+    <xacro:include filename="my_laser.urdf.xacro" />
+</robot>
+```
+
+3.launch 文件
+
+```xml
+<launch>
+    <param name="robot_description" command="$(find xacro)/xacro $(find urdf01_rviz)/urdf/xacro/demo05_car_base.urdf.xacro" />
+
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find urdf01_rviz)/config/base_footprint.rviz" />
+    <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher" output="screen" />
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen" />
+    <node pkg="joint_state_publisher_gui" type="joint_state_publisher_gui" name="joint_state_publisher_gui" output="screen" />
+
+</launch>
+```
+
+### 6.5控制机器人运动
+
+6.5.1 Arbotix使用流程
+
+接下来，通过一个案例演示 arbotix 的使用。
+
+**需求描述:**
+
+控制机器人模型在 rviz 中做圆周运动
+
+**结果演示:**
+
+![](pic_linux/arbotix运动控制.gif)
+
+**实现流程:**
+
+1.  安装 Arbotix
+    
+2.  创建新功能包，准备机器人 urdf、xacro 文件
+    
+3.  添加 Arbotix 配置文件
+    
+4.  编写 launch 文件配置 Arbotix
+    
+5.  启动 launch 文件并控制机器人模型运动
+    
+
+1.安装 Arbotix
+
+**方式1:**命令行调用
+
+```
+sudo apt-get install ros-<<VersionName()>>-arbotix
+```
+
+将 <<VsersionName()>> 替换成当前 ROS 版本名称，如果提示功能包无法定位，请采用方式2。
+
+**方式2:**源码安装
+
+先从 github 下载源码，然后调用 catkin\_make 编译
+
+```
+git clone https://github.com/vanadiumlabs/arbotix_ros.git
+```
+
+2.创建新功能包，准备机器人 urdf、xacro
+
+urdf 和 xacro 调用上一讲实现即可
+
+3.添加 arbotix 所需的配置文件
+
+**添加 arbotix 所需配置文件**
+
+config/control.yaml
+
+```xml
+# 该文件是控制器配置,一个机器人模型可能有多个控制器，比如: 底盘、机械臂、夹持器(机械手)....
+# 因此，根 name 是 controller
+controllers: {
+   # 单控制器设置
+   base_controller: {
+          #类型: 差速控制器
+       type: diff_controller,
+       #参考坐标
+       base_frame_id: base_footprint, 
+       #两个轮子之间的间距
+       base_width: 0.2,
+       #控制频率
+       ticks_meter: 2000, 
+       #PID控制参数，使机器人车轮快速达到预期速度
+       Kp: 12, 
+       Kd: 12, 
+       Ki: 0, 
+       Ko: 50, 
+       #加速限制
+       accel_limit: 1.0 
+    }
+}
+```
+
+**另请参考:** [http://wiki.ros.org/arbotix\_python/diff\_controller](http://wiki.ros.org/arbotix_python/diff_controller)
+
+4.launch 文件中配置 arbotix 节点
+
+**launch 示例代码**
+
+demo07_control.launch
+
+```xml
+<launch>
+    <!-- 将 urdf 文件内容设置进参数服务器 -->
+    <param name="robot_description" command="$(find xacro)/xacro $(find urdf01_rviz)/urdf/xacro/car.urdf.xacro" />
+
+    <!-- 启动 rivz -->
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find urdf01_rviz)/config/base_footprint.rviz" />
+
+    <!-- 启动机器人状态和关节状态发布节点 -->
+    <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher" output="screen" />
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen" />
+
+    <!-- 启动图形化的控制关节运动节点 -->
+    <node pkg="joint_state_publisher_gui" type="joint_state_publisher_gui" name="joint_state_publisher_gui" output="screen" />
+
+    <!-- 集成 arbotix 运动控制节点，并且加载参数 -->
+    <node pkg="arbotix_python" type="arbotix_driver" name="driver" output="screen">
+        <rosparam command="load" file="$(find urdf01_rviz)/config/control.yaml" />
+        <param name="sim" value="true" />
+    </node>
+
+</launch>
+```
+
+代码解释:
+
+<node> 调用了 arbotix\_python 功能包下的 arbotix\_driver 节点
+
+<rosparam> arbotix 驱动机器人运行时，需要获取机器人信息，可以通过 file 加载配置文件
+
+<param> 在仿真环境下，需要配置 sim 为 true
+
+5.启动 launch 文件并控制机器人模型运动
+
+**启动launch:**roslaunch xxxx ....launch
+
+**配置 rviz:**
+
+![](pic_linux/06_arbotix实现01.png)
+
+**控制小车运动:**
+
+此时调用 rostopic list 会发现一个熟悉的话题: /cmd\_vel![](pic_linux/07_arbotix实现02.png)也就说我们可以发布 cmd\_vel 话题消息控制小陈运动了，该实现策略有多种，可以另行编写节点，或者更简单些可以直接通过如下命令发布消息:
+
+```shell
+book@100ask:~$ rostopic list
+/clicked_point
+/cmd_vel
+/diagnostics
+/initialpose
+/joint_states
+/move_base_simple/goal
+/odom
+/rosout
+/rosout_agg
+/tf
+/tf_static
+book@100ask:~$ rostopic pub -r 10 /cmd_vel geometry_msgs/Twist "linear:
+  x: 1.0
+  y: 0.0
+  z: 0.0
+angular:
+  x: 0.0
+  y: 0.0
+  z: 1.0" 
+```
+
+现在，小车就可以运动起来了。
+
+___
+
+**另请参考:**
+
+-   [http://wiki.ros.org/arbotix](http://wiki.ros.org/arbotix)
+
+### 6.6 gazebo
+
+URDF 需要集成进 Rviz 或 Gazebo 才能显示可视化的机器人模型，前面已经介绍了URDF 与 Rviz 的集成，本节主要介绍:
+
+-   URDF 与 Gazebo 的基本集成流程；
+-   如果要在 Gazebo 中显示机器人模型，URDF 需要做的一些额外配置；
+-   关于Gazebo仿真环境的搭建。
+
+#### 6.6.0 gazebo闪退解决
+
+![](pic_linux/original.png)
+
+[/\*wywy\*/](https://blog.csdn.net/qq_44360908 "/*wywy*/") ![](pic_linux/newCurrentTime2.png) 于 2021-06-14 20:43:37 发布
+
+  今天为了能让小车导航用上更好更精确的地图，想到在gazebo里建一个仿真的环境来建图，开开心心的用Building Editor画完，保存[模型](https://edu.csdn.net/cloud/ml_summit?utm_source=glcblog&spm=1001.2101.3001.7020)，选中模型，果断点击放置，~美滋滋~。。。。。个pi。。。。
+
+报错：gzclient: /build/ogre-1.9-B6QkmW/ogre-1.9-1.9.0+dfsg1/OgreMain/src/OgreNode.cpp:630：[virtual](https://so.csdn.net/so/search?q=virtual&spm=1001.2101.3001.7020) void Ogre::Node::setScale([const](https://edu.csdn.net/cloud/houjie?utm_source=highword&spm=1001.2101.3001.7020) Ogre::Vector3&): 假设 ‘!inScale.isNaN() && "Invalid vector supplied as parameter"’ 失败。  
+escalating to SIGKILL on server
+
+![](pic_linux/9c3138e8be30b5cec93b4533bb0ceb91.png)
+
+  画了大半天和我说不能放置？一点击放置gazebo马上闪退，真是搞人心态。网上艘了一圈发现可能是gazebo的版本过低了。。。。都gazebo9了还低的吗。。。。无奈之下还是选择升级一下好了，万一就可以了呢。
+
+![](pic_linux/47997e1e62c57f7d5f505c2faa597697.png)
+
+  看了一下版本，直接上11好了。冒着环境崩掉的危险开始重装gazebo。
+
+  卸载之前确定一下版本
+
+> $ gazebo --version
+
+![](pic_linux/9aa09a1676092f2c1a7b102fc7aac8fd.png)
+
+  查看一下gazebo相关插件
+
+> $ dpkg -l | grep gazebo
+
+![](pic_linux/2977a89f043f45af3202cbb9d750e861.png)
+
+  好家伙还挺多，心里建设了一下，敲下了下面这句
+
+> $ sudo apt-get remove gazebo9 gazebo9-common gazebo9-plugin-base libgazebo9:amd64 libgazebo9-dev:amd64 ros-melodic-gazebo-\*
+
+![](pic_linux/cfb0afeb2966e2dd7de7e983fc16f918.png)
+
+  等待卸载完毕，下面开始装gazebo11，一个新的开始。首先设置您的计算机以接受来自 packages.osrfoundation.org 的[软件](https://marketing.csdn.net/p/3127db09a98e0723b83b2914d9256174?pId=2782&utm_source=glcblog&spm=1001.2101.3001.7020)。
+
+> $ sudo sh -c 'echo "deb http://packages.osrfoundation.org/gazebo/ubuntu\-stable \`lsb\_release -cs\` main" > /etc/apt/sources.list.d/gazebo-stable.list'
+
+可以检查文件是否正确写入
+
+> $ cat /etc/apt/sources.list.d/gazebo-stable.list
+
+  一切正常的话应该是这样的
+
+![](pic_linux/346206a1b5b87c9ecd100027ffd841f3.png)
+
+  然后设置密钥
+
+> $ wget https://packages.osrfoundation.org/gazebo.key -O - | sudo apt-key add -
+
+![](pic_linux/a089b20bf287a67c7175e003ae107c4d.png)
+
+  然后输入更新一下
+
+> $ sudo apt-get update
+
+![](pic_linux/7ad59dec7d677818df7221d54c9bbc03.png)
+
+  接下来安装gazebo11
+
+> $ sudo apt-get install gazebo11
+
+![](pic_linux/5d47e481200fa986a22c5efa2a143aaa.png)
+
+  一波等待之后，继续安装依赖
+
+> $ sudo apt-get install libgazebo11-dev
+
+![](pic_linux/f047338c331fd5628f67a201b9e2d579.png)
+
+  装完了？不存在的，在装一下ros相关插件
+
+> $ sudo apt install ros-melodic-gazebo11-\*
+
+![](pic_linux/6b2686623de9e978d04db580c25647e3.png)
+
+  好了装完了，运行一下gazebo验证一下行不行。
+
+> $ gazebo
+
+  我在gazebo里放置了一下，神奇的事情发生了，他好了，我又可以了，之前下载的模型库也都还在，自己画的也还在，nice！果然还是得经常更新一下软件，希望我的垃圾电脑能够带的动。
+
+参考教程：[http://gazebosim.org/tutorials?tut=install\_ubuntu&cat=install](http://gazebosim.org/tutorials?tut=install_ubuntu&cat=install)
+
+[https://blog.csdn.net/weixin\_44623637/article/details/109249607](https://blog.csdn.net/weixin_44623637/article/details/109249607)
+
+#### 6.6.1 URDF与Gazebo基本集成流程
+
+URDF 与 Gazebo 集成流程与 Rviz 实现类似，主要步骤如下:
+
+1.  创建功能包，导入依赖项
+    
+2.  编写 URDF 或 Xacro 文件
+    
+3.  启动 Gazebo 并显示机器人模型
+    
+
+1.创建功能包
+
+创建新功能包，导入依赖包: urdf、xacro、gazebo\_ros、gazebo\_ros\_control、gazebo\_plugins
+
+2.编写URDF文件
+
+```xml
+<!-- 
+    创建一个机器人模型(盒状即可)，显示在 Gazebo 中 
+-->
+
+<robot name="mycar">
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <box size="0.5 0.2 0.1" />
+            </geometry>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+            <material name="yellow">
+                <color rgba="0.5 0.3 0.0 1" />
+            </material>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.5 0.2 0.1" />
+            </geometry>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+        </collision>
+        <inertial>
+            <origin xyz="0 0 0" />
+            <mass value="6" />
+            <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1" />
+        </inertial>
+    </link>
+    <gazebo reference="base_link">
+        <material>Gazebo/Black</material>
+    </gazebo>
+
+</robot>
+```
+
+注意， 当 URDF 需要与 Gazebo 集成时，和 Rviz 有明显区别:
+
+1.必须使用 collision 标签，因为既然是仿真环境，那么必然涉及到碰撞检测，collision 提供碰撞检测的依据。
+
+2.必须使用 inertial 标签，此标签标注了当前机器人某个刚体部分的惯性矩阵，用于一些力学相关的仿真计算。
+
+3.颜色设置，也需要重新使用 gazebo 标签标注，因为之前的颜色设置为了方便调试包含透明度，仿真环境下没有此选项。
+
+3.启动Gazebo并显示模型
+
+launch 文件实现:
+
+```xml
+<launch>
+
+    <!-- 将 Urdf 文件的内容加载到参数服务器 -->
+    <param name="robot_description" textfile="$(find demo02_urdf_gazebo)/urdf/urdf01_helloworld.urdf" />
+
+    <!-- 启动 gazebo -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch" />
+
+    <!-- 在 gazebo 中显示机器人模型 -->
+    <node pkg="gazebo_ros" type="spawn_model" name="model" args="-urdf -model mycar -param robot_description"  />
+</launch>
+```
+
+代码解释:
+
+```xml
+<include file="$(find gazebo_ros)/launch/empty_world.launch" />
+<!-- 启动 Gazebo 的仿真环境，当前环境为空环境 -->
+```
+
+```xml
+<node pkg="gazebo_ros" type="spawn_model" name="model" args="-urdf -model mycar -param robot_description"  />
+
+<!-- 
+    在 Gazebo 中加载一个机器人模型，该功能由 gazebo_ros 下的 spawn_model 提供:
+    -urdf 加载的是 urdf 文件
+    -model mycar 模型名称是 mycar
+    -param robot_description 从参数 robot_description 中载入模型
+    -x 模型载入的 x 坐标
+    -y 模型载入的 y 坐标
+    -z 模型载入的 z 坐标
+-->
+```
+
+#### 6.6.2 URDF集成Gazebo相关设置
+
+较之于 rviz，gazebo在集成 URDF 时，需要做些许修改，比如:必须添加 collision 碰撞属性相关参数、必须添加 inertial 惯性矩阵相关参数，另外，如果直接移植 Rviz 中机器人的颜色设置是没有显示的，颜色设置也必须做相应的变更。
+
+1.collision
+
+如果机器人link是标准的几何体形状，和link的 visual 属性设置一致即可。
+
+2.inertial
+
+惯性矩阵的设置需要结合link的质量与外形参数动态生成，标准的球体、圆柱与立方体的惯性矩阵公式如下(已经封装为 xacro 实现):
+
+球体惯性矩阵
+
+```xml
+<!-- Macro for inertia matrix -->
+    <xacro:macro name="sphere_inertial_matrix" params="m r">
+        <inertial>
+            <mass value="${m}" />
+            <inertia ixx="${2*m*r*r/5}" ixy="0" ixz="0"
+                iyy="${2*m*r*r/5}" iyz="0" 
+                izz="${2*m*r*r/5}" />
+        </inertial>
+    </xacro:macro>
+```
+
+圆柱惯性矩阵
+
+```xml
+<xacro:macro name="cylinder_inertial_matrix" params="m r h">
+        <inertial>
+            <mass value="${m}" />
+            <inertia ixx="${m*(3*r*r+h*h)/12}" ixy = "0" ixz = "0"
+                iyy="${m*(3*r*r+h*h)/12}" iyz = "0"
+                izz="${m*r*r/2}" /> 
+        </inertial>
+    </xacro:macro>
+```
+
+立方体惯性矩阵
+
+```xml
+ <xacro:macro name="Box_inertial_matrix" params="m l w h">
+       <inertial>
+               <mass value="${m}" />
+               <inertia ixx="${m*(h*h + l*l)/12}" ixy = "0" ixz = "0"
+                   iyy="${m*(w*w + l*l)/12}" iyz= "0"
+                   izz="${m*(w*w + h*h)/12}" />
+       </inertial>
+   </xacro:macro>
+```
+
+需要注意的是，原则上，除了 base\_footprint 外，机器人的每个刚体部分都需要设置惯性矩阵，且惯性矩阵必须经计算得出，如果随意定义刚体部分的惯性矩阵，那么可能会导致机器人在 Gazebo 中出现抖动，移动等现象。
+
+3.颜色设置
+
+在 gazebo 中显示 link 的颜色，必须要使用指定的标签:
+
+```xml
+<gazebo reference="link节点名称">
+     <material>Gazebo/Blue</material>
+</gazebo>
+```
+
+**PS：**material 标签中，设置的值区分大小写，颜色可以设置为 Red Blue Green Black .....
+
+#### 6.6.3 URDF集成Gazebo实操
+
+**需求描述:**
+
+将之前的机器人模型(xacro版)显示在 gazebo 中
+
+**结果演示:**![](pic_linux/18_gazebo案例.PNG)**实现流程:**
+
+1.  需要编写封装惯性矩阵算法的 xacro 文件
+    
+2.  为机器人模型中的每一个 link 添加 collision 和 inertial 标签，并且重置颜色属性
+    
+3.  在 launch 文件中启动 gazebo 并添加机器人模型
+    
+
+1.编写封装惯性矩阵算法的 xacro 文件
+
+head.xacro
+
+```xml
+<robot name="base" xmlns:xacro="http://wiki.ros.org/xacro">
+    <!-- Macro for inertia matrix -->
+    <xacro:macro name="sphere_inertial_matrix" params="m r">
+        <inertial>
+            <mass value="${m}" />
+            <inertia ixx="${2*m*r*r/5}" ixy="0" ixz="0"
+                iyy="${2*m*r*r/5}" iyz="0" 
+                izz="${2*m*r*r/5}" />
+        </inertial>
+    </xacro:macro>
+
+    <xacro:macro name="cylinder_inertial_matrix" params="m r h">
+        <inertial>
+            <mass value="${m}" />
+            <inertia ixx="${m*(3*r*r+h*h)/12}" ixy = "0" ixz = "0"
+                iyy="${m*(3*r*r+h*h)/12}" iyz = "0"
+                izz="${m*r*r/2}" /> 
+        </inertial>
+    </xacro:macro>
+
+    <xacro:macro name="Box_inertial_matrix" params="m l w h">
+       <inertial>
+               <mass value="${m}" />
+               <inertia ixx="${m*(h*h + l*l)/12}" ixy = "0" ixz = "0"
+                   iyy="${m*(w*w + l*l)/12}" iyz= "0"
+                   izz="${m*(w*w + h*h)/12}" />
+       </inertial>
+   </xacro:macro>
+</robot>
+```
+
+2.复制相关 xacro 文件，并设置 collision inertial 以及 color 等参数
+
+**A.底盘 Xacro 文件**
+
+demo05_car_base.urdf.xacro
+
+```xml
+
+<robot name="my_base" xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <xacro:property name="PI" value="3.1415926"/>
+    <material name="black">
+        <color rgba="0.0 0.0 0.0 1.0" />
+    </material>
+    <xacro:property name="base_footprint_radius" value="0.001" />
+    <xacro:property name="base_link_radius" value="0.1" /> 
+    <xacro:property name="base_link_length" value="0.08" /> 
+    <xacro:property name="earth_space" value="0.015" /> 
+    <xacro:property name="base_link_m" value="0.5" />
+
+
+    <link name="base_footprint">
+      <visual>
+        <geometry>
+          <sphere radius="${base_footprint_radius}" />
+        </geometry>
+      </visual>
+    </link>
+
+    <link name="base_link">
+      <visual>
+        <geometry>
+          <cylinder radius="${base_link_radius}" length="${base_link_length}" />
+        </geometry>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <material name="yellow">
+          <color rgba="0.5 0.3 0.0 0.5" />
+        </material>
+      </visual>
+      <collision>
+        <geometry>
+          <cylinder radius="${base_link_radius}" length="${base_link_length}" />
+        </geometry>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+      </collision>
+      <xacro:cylinder_inertial_matrix m="${base_link_m}" r="${base_link_radius}" h="${base_link_length}" />
+
+    </link>
+
+
+    <joint name="base_link2base_footprint" type="fixed">
+      <parent link="base_footprint" />
+      <child link="base_link" />
+      <origin xyz="0 0 ${earth_space + base_link_length / 2 }" />
+    </joint>
+    <gazebo reference="base_link">
+        <material>Gazebo/Yellow</material>
+    </gazebo>
+
+
+    <xacro:property name="wheel_radius" value="0.0325" />
+    <xacro:property name="wheel_length" value="0.015" />
+    <xacro:property name="wheel_m" value="0.05" /> 
+
+
+    <xacro:macro name="add_wheels" params="name flag">
+      <link name="${name}_wheel">
+        <visual>
+          <geometry>
+            <cylinder radius="${wheel_radius}" length="${wheel_length}" />
+          </geometry>
+          <origin xyz="0.0 0.0 0.0" rpy="${PI / 2} 0.0 0.0" />
+          <material name="black" />
+        </visual>
+        <collision>
+          <geometry>
+            <cylinder radius="${wheel_radius}" length="${wheel_length}" />
+          </geometry>
+          <origin xyz="0.0 0.0 0.0" rpy="${PI / 2} 0.0 0.0" />
+        </collision>
+        <xacro:cylinder_inertial_matrix m="${wheel_m}" r="${wheel_radius}" h="${wheel_length}" />
+
+      </link>
+
+      <joint name="${name}_wheel2base_link" type="continuous">
+        <parent link="base_link" />
+        <child link="${name}_wheel" />
+        <origin xyz="0 ${flag * base_link_radius} ${-(earth_space + base_link_length / 2 - wheel_radius) }" />
+        <axis xyz="0 1 0" />
+      </joint>
+
+      <gazebo reference="${name}_wheel">
+        <material>Gazebo/Red</material>
+      </gazebo>
+
+    </xacro:macro>
+    <xacro:add_wheels name="left" flag="1" />
+    <xacro:add_wheels name="right" flag="-1" />
+
+    <xacro:property name="support_wheel_radius" value="0.0075" /> 
+    <xacro:property name="support_wheel_m" value="0.03" /> 
+
+
+    <xacro:macro name="add_support_wheel" params="name flag" >
+      <link name="${name}_wheel">
+        <visual>
+            <geometry>
+                <sphere radius="${support_wheel_radius}" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <material name="black" />
+        </visual>
+        <collision>
+            <geometry>
+                <sphere radius="${support_wheel_radius}" />
+            </geometry>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+        </collision>
+        <xacro:sphere_inertial_matrix m="${support_wheel_m}" r="${support_wheel_radius}" />
+      </link>
+
+      <joint name="${name}_wheel2base_link" type="continuous">
+          <parent link="base_link" />
+          <child link="${name}_wheel" />
+          <origin xyz="${flag * (base_link_radius - support_wheel_radius)} 0 ${-(base_link_length / 2 + earth_space / 2)}" />
+          <axis xyz="1 1 1" />
+      </joint>
+      <gazebo reference="${name}_wheel">
+        <material>Gazebo/Red</material>
+      </gazebo>
+    </xacro:macro>
+
+    <xacro:add_support_wheel name="front" flag="1" />
+    <xacro:add_support_wheel name="back" flag="-1" />
+
+
+</robot>
+```
+
+注意: 如果机器人模型在 Gazebo 中产生了抖动，滑动，缓慢位移 .... 诸如此类情况，请查看
+
+1.  惯性矩阵是否设置了，且设置是否正确合理
+    
+2.  车轮翻转需要依赖于 PI 值，如果 PI 值精度偏低，也可能导致上述情况产生
+    
+
+B.摄像头 Xacro 文件
+
+demo06_car_camera.urdf.xacro
+
+```xml
+
+<robot name="my_camera" xmlns:xacro="http://wiki.ros.org/xacro">
+
+    <xacro:property name="camera_length" value="0.01" /> 
+    <xacro:property name="camera_width" value="0.025" /> 
+    <xacro:property name="camera_height" value="0.025" /> 
+    <xacro:property name="camera_x" value="0.08" />
+    <xacro:property name="camera_y" value="0.0" /> 
+    <xacro:property name="camera_z" value="${base_link_length / 2 + camera_height / 2}" /> 
+
+    <xacro:property name="camera_m" value="0.01" /> 
+
+    
+    <link name="camera">
+        <visual>
+            <geometry>
+                <box size="${camera_length} ${camera_width} ${camera_height}" />
+            </geometry>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+            <material name="black" />
+        </visual>
+        <collision>
+            <geometry>
+                <box size="${camera_length} ${camera_width} ${camera_height}" />
+            </geometry>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+        </collision>
+        <xacro:Box_inertial_matrix m="${camera_m}" l="${camera_length}" w="${camera_width}" h="${camera_height}" />
+    </link>
+
+    <joint name="camera2base_link" type="fixed">
+        <parent link="base_link" />
+        <child link="camera" />
+        <origin xyz="${camera_x} ${camera_y} ${camera_z}" />
+    </joint>
+    <gazebo reference="camera">
+        <material>Gazebo/Blue</material>
+    </gazebo>
+</robot>
+```
+
+C.雷达 Xacro 文件
+
+demo07_car_laser.urdf.xacro
+
+```xml
+
+<robot name="my_laser" xmlns:xacro="http://wiki.ros.org/xacro">
+
+ 
+    <xacro:property name="support_length" value="0.15" /> 
+    <xacro:property name="support_radius" value="0.01" />
+    <xacro:property name="support_x" value="0.0" />
+    <xacro:property name="support_y" value="0.0" /> 
+    <xacro:property name="support_z" value="${base_link_length / 2 + support_length / 2}" />
+    <xacro:property name="support_m" value="0.02" />
+
+    <link name="support">
+        <visual>
+            <geometry>
+                <cylinder radius="${support_radius}" length="${support_length}" />
+            </geometry>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+            <material name="red">
+                <color rgba="0.8 0.2 0.0 0.8" />
+            </material>
+        </visual>
+
+        <collision>
+            <geometry>
+                <cylinder radius="${support_radius}" length="${support_length}" />
+            </geometry>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+        </collision>
+
+        <xacro:cylinder_inertial_matrix m="${support_m}" r="${support_radius}" h="${support_length}" />
+
+    </link>
+
+    <joint name="support2base_link" type="fixed">
+        <parent link="base_link" />
+        <child link="support" />
+        <origin xyz="${support_x} ${support_y} ${support_z}" />
+    </joint>
+
+    <gazebo reference="support">
+        <material>Gazebo/White</material>
+    </gazebo>
+
+
+    <xacro:property name="laser_length" value="0.05" /> 
+    <xacro:property name="laser_radius" value="0.03" /> 
+    <xacro:property name="laser_x" value="0.0" /> 
+    <xacro:property name="laser_y" value="0.0" />
+    <xacro:property name="laser_z" value="${support_length / 2 + laser_length / 2}" /> 
+
+    <xacro:property name="laser_m" value="0.1" />
+
+    <link name="laser">
+        <visual>
+            <geometry>
+                <cylinder radius="${laser_radius}" length="${laser_length}" />
+            </geometry>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+            <material name="black" />
+        </visual>
+        <collision>
+            <geometry>
+                <cylinder radius="${laser_radius}" length="${laser_length}" />
+            </geometry>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+        </collision>
+        <xacro:cylinder_inertial_matrix m="${laser_m}" r="${laser_radius}" h="${laser_length}" />
+    </link>
+
+    <joint name="laser2support" type="fixed">
+        <parent link="support" />
+        <child link="laser" />
+        <origin xyz="${laser_x} ${laser_y} ${laser_z}" />
+    </joint>
+    <gazebo reference="laser">
+        <material>Gazebo/Black</material>
+    </gazebo>
+</robot>
+```
+
+D.组合底盘、摄像头与雷达的 Xacro 文件
+
+car.urdf.xacro
+
+```xml
+
+<robot name="my_car_camera" xmlns:xacro="http://wiki.ros.org/xacro">
+
+    <xacro:include filename="head.xacro" />
+
+    <xacro:include filename="demo05_car_base.urdf.xacro" />
+    <xacro:include filename="demo06_car_camera.urdf.xacro" />
+    <xacro:include filename="demo07_car_laser.urdf.xacro" />
+</robot>
+```
+
+3.在 gazebo 中执行
+
+launch 文件:
+
+demo03_env.launch
+
+```xml
+<launch>
+
+    <!-- 将 Urdf 文件的内容加载到参数服务器 -->
+    <param name="robot_description" command="$(find xacro)/xacro $(find urdf02_gazebo)/urdf/car.urdf.xacro" />
+
+    <!-- 启动 gazebo -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name" value="$(find urdf02_gazebo)/worlds/box_house.world" />
+    </include>
+
+    <!-- 在 gazebo 中显示机器人模型 -->
+    <node pkg="gazebo_ros" type="spawn_model" name="model" args="-urdf -model mycar -param robot_description"  />
+</launch>
+```
+
+
+
+#### 6.6.4 Gazebo仿真环境搭建
+
+到目前为止，我们已经可以将机器人模型显示在 Gazebo 之中了，但是当前默认情况下，在 Gazebo 中机器人模型是在 empty world 中，并没有类似于房间、家具、道路、树木... 之类的仿真物，如何在 Gazebo 中创建仿真环境呢？
+
+Gazebo 中创建仿真实现方式有两种:
+
+-   方式1: 直接添加内置组件创建仿真环境
+    
+-   方式2: 手动绘制仿真环境(更为灵活)
+    
+
+也还可以直接下载使用官方或第三方提高的仿真环境插件。
+
+1.添加内置组件创建仿真环境
+
+1.1启动 Gazebo 并添加组件![](pic_linux/19_搭建仿真环境.png)
+
+1.2保存仿真环境
+
+添加完毕后，选择 file ---> Save World as 选择保存路径(功能包下: worlds 目录)，文件名自定义，后缀名设置为 .world![](pic_linux/14_gazebo保存为world文件.png)
+
+1.3 启动
+
+```xml
+<launch>
+
+    <!-- 将 Urdf 文件的内容加载到参数服务器 -->
+    <param name="robot_description" command="$(find xacro)/xacro $(find demo02_urdf_gazebo)/urdf/xacro/my_base_camera_laser.urdf.xacro" />
+    <!-- 启动 gazebo -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name" value="$(find demo02_urdf_gazebo)/worlds/hello.world" />
+    </include>
+
+    <!-- 在 gazebo 中显示机器人模型 -->
+    <node pkg="gazebo_ros" type="spawn_model" name="model" args="-urdf -model mycar -param robot_description"  />
+</launch>
+```
+
+核心代码: 启动 empty\_world 后，再根据`arg`加载自定义的仿真环境
+
+```xml
+<include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(find demo02_urdf_gazebo)/worlds/hello.world" />
+</include>
+```
+
+2.自定义仿真环境
+
+2.1 启动 gazebo 打开构建面板，绘制仿真环境
+
+![](pic_linux/12_gazebo搭建环境.png)![](pic_linux/13_gazebo构建环境.png)
+
+2.2 保存构建的环境
+
+点击: 左上角 file ---> Save (保存路径功能包下的: models)
+
+然后 file ---> Exit Building Editor
+
+2.3 保存为 world 文件
+
+可以像方式1一样再添加一些插件，然后保存为 world 文件(保存路径功能包下的: worlds)
+
+![](pic_linux/14_gazebo保存为world文件.png)
+
+2.4 启动
+
+同方式1
+
+3.使用官方提供的插件
+
+当前 Gazebo 提供的仿真道具有限，还可以下载官方支持，可以提供更为丰富的仿真实现，具体实现如下:
+
+3.1 下载官方模型库
+
+`git clone https://github.com/osrf/gazebo_models`
+
+之前是:`hg clone https://bitbucket.org/osrf/gazebo_models`但是已经不可用
+
+注意: 此过程可能比较耗时
+
+3.2 将模型库复制进 gazebo
+
+将得到的gazebo\_models文件夹内容复制到 /usr/share/gazebo-\*/models
+
+3.3 应用
+
+重启 Gazebo，选择左侧菜单栏的 insert 可以选择并插入相关道具了
+
+
+
+### 6.7 URDF、Gazebo与Rviz综合应用
+
+关于URDF(Xacro)、Rviz 和 Gazebo 三者的关系，前面已有阐述: URDF 用于创建机器人模型、Rviz 可以显示机器人感知到的环境信息，Gazebo 用于仿真，可以模拟外界环境，以及机器人的一些传感器，如何在 Gazebo 中运行这些传感器，并显示这些传感器的数据(机器人的视角)呢？本节主要介绍的重点就是将三者结合:通过 Gazebo 模拟机器人的传感器，然后在 Rviz 中显示这些传感器感知到的数据。主要内容包括:
+
+-   运动控制以及里程计信息显示
+    
+-   雷达信息仿真以及显示
+    
+-   摄像头信息仿真以及显示
+    
+-   kinect 信息仿真以及显示
+    
+
+___
+
+**另请参考:**
+
+-   [http://gazebosim.org/tutorials?tut=ros\_gzplugins](http://gazebosim.org/tutorials?tut=ros_gzplugins)
