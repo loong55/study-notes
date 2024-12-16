@@ -8221,9 +8221,7 @@ demo04_base_footprint.launch
 
 ```xml
 <!--
-
     使用 base_footprint 优化
-
 -->
 <robot name="mycar">
     <!-- 设置一个原点(机器人中心点的投影) -->
@@ -10072,7 +10070,7 @@ gazebo 中已经可以正常显示机器人模型了，那么如何像在 rviz �
 
 1.ros\_control 简介
 
-**场景:**同一套 ROS 程序，如何部署在不同的机器人系统上，比如：开发阶段为了提高效率是在仿真平台上测试的，部署时又有不同的实体机器人平台，不同平台的实现是有差异的，如何保证 ROS 程序的可移植性？ROS 内置的解决方式是 ros\_control。
+**场景:**同一套 ROS 程序，如何部署在不同的机器人系统上，22222220比如：开发阶段为了提高效率是在仿真平台上测试的，部署时又有不同的实体机器人平台，不同平台的实现是有差异的，如何保证 ROS 程序的可移植性？ROS 内置的解决方式是 ros\_control。
 
 **ros\_control:**是一组软件包，它包含了控制器接口，控制器管理器，传输和硬件接口。ros\_control 是一套机器人控制的中间件，是一套规范，不同的机器人平台只要按照这套规范实现，那么就可以保证 与ROS 程序兼容，通过这套规范，实现了一种可插拔的架构设计，大大提高了程序设计的效率与灵活性。
 
@@ -10632,3 +10630,580 @@ URDF 是用于描述机器人模型的 xml 文件，可以使用不同的标签�
 > 如果你手上没有机器人硬件，或者想在仿真环境中做一些算法、应用的测试，gazebo+rviz应该是你需要的。
 >
 > 另外，rviz配合其他功能包也可以建立一个简单的仿真环境，比如rviz+ArbotiX。
+
+## 第七章 机器人导航仿真
+
+导航是机器人系统中最重要的模块之一，比如现在较为流行的服务型室内机器人，就是依赖于机器人导航来实现室内自主移动的，本章主要就是介绍仿真环境下的导航实现，主要内容有:
+
+-   导航相关概念
+-   导航实现:机器人建图(SLAM)、地图服务、定位、路径规划....以可视化操作为主。
+-   导航消息:了解地图、里程计、雷达、摄像头等相关消息格式。
+
+预期达成的学习目标:
+
+-   了解导航模块中的组成部分以及相关概念
+-   能够在仿真环境下独立完成机器人导航
+
+**案例演示:**
+
+SLAM建图
+
+![](pic_linux/SLAM.gif)
+
+定位
+
+![](pic_linux/amcl.gif)
+
+导航实现
+
+![](pic_linux/导航.gif)
+
+### 7.1 概述
+
+7.1 概述
+
+1.概念
+
+在ROS中机器人导航(Navigation)由多个功能包组合实现，ROS 中又称之为导航功能包集，关于导航模块，官方介绍如下:
+
+```
+一个二维导航堆栈，它接收来自里程计、传感器流和目标姿态的信息，并输出发送到移动底盘的安全速度命令。
+```
+
+更通俗的讲: 导航其实就是机器人自主的从 A 点移动到 B 点的过程。
+
+![](pic_linux/01_导航官方简介-173427537925216.png)
+
+2.作用
+
+秉着"不重复发明轮子"的原则，ROS 中导航相关的功能包集为机器人导航提供了一套通用的实现，开发者不再需要关注于导航算法、硬件交互... 等偏复杂、偏底层的实现，这些实现都由更专业的研发人员管理、迭代和维护，开发者可以更专注于上层功能，而对于导航功能的调用，只需要根据自身机器人相关参数合理设置各模块的配置文件即可，当然，如果有必要，也可以基于现有的功能包二次开发实现一些定制化需求，这样可以大大提高研发效率，缩短产品落地时间。总而言之，对于一般开发者而言，ROS 的导航功能包集优势如下:
+
+-   安全: 由专业团队开发和维护
+    
+-   功能: 功能更稳定且全面
+    
+-   高效: 解放开发者，让开发者更专注于上层功能实现
+    
+
+___
+
+**另请参考:**
+
+-   [http://wiki.ros.org/navigation](http://wiki.ros.org/navigation)
+
+#### 7.1.1导航模块简介
+
+机器人是如何实现导航的呢？或换言之，机器人是如何从 A 点移动到 B 点呢？ROS 官方为了提供了一张导航功能包集的图示,该图中囊括了 ROS 导航的一些关键技术:![](http://www.autolabor.com.cn/book/assets/02_%E5%AF%BC%E8%88%AA%E5%AE%98%E6%96%B9%E6%9E%B6%E6%9E%84.png)
+
+假定我们已经以特定方式配置机器人，导航功能包集将使其可以运动。上图概述了这种配置方式。白色的部分是必须且已实现的组件，灰色的部分是可选且已实现的组件，蓝色的部分是必须为每一个机器人平台创建的组件。
+
+总结下来，涉及的关键技术有如下五点:
+
+1.  全局地图
+    
+2.  自身定位
+    
+3.  路径规划
+    
+4.  运动控制
+    
+5.  环境感知
+    
+
+机器人导航实现与无人驾驶类似，关键技术也是由上述五点组成，只是无人驾驶是基于室外的，而我们当前介绍的机器人导航更多是基于室内的。
+
+##### 1.全局地图
+
+在现实生活中，当我们需要实现导航时，可能会首先参考一张全局性质的地图，然后根据地图来确定自身的位置、目的地位置，并且也会根据地图显示来规划一条大致的路线.... 对于机器人导航而言，也是如此，在机器人导航中地图是一个重要的组成元素，当然如果要使用地图，首先需要绘制地图。关于地图建模技术不断涌现，这其中有一门称之为 SLAM 的理论脱颖而出:
+
+1.  **SLAM**(simultaneous localization and mapping),也称为CML (Concurrent Mapping and Localization), 即时定位与地图构建，或并发建图与定位。SLAM问题可以描述为: 机器人在未知环境中从一个未知位置开始移动,在移动过程中根据位置估计和地图进行自身定位，同时在自身定位的基础上建造增量式地图，以绘制出外部环境的完全地图。
+    
+2.  在 ROS 中，较为常用的 SLAM 实现也比较多，比如: gmapping、hector\_slam、cartographer、rgbdslam、ORB\_SLAM ....
+    
+3.  当然如果要完成 SLAM ，机器人必须要具备感知外界环境的能力，尤其是要具备获取周围环境深度信息的能力。感知的实现需要依赖于传感器，比如: 激光雷达、摄像头、RGB-D摄像头...
+    
+4.  SLAM 可以用于地图生成，而生成的地图还需要被保存以待后续使用，在 ROS 中保存地图的功能包是 map\_server
+    
+
+另外注意: SLAM 虽然是机器人导航的重要技术之一，但是 二者并不等价，确切的讲，SLAM 只是实现地图构建和即时定位。
+
+##### 2.自身定位
+
+导航伊始和导航过程中，机器人都需要确定当前自身的位置，如果在室外，那么 GPS 是一个不错的选择，而如果室内、隧道、地下或一些特殊的屏蔽 GPS 信号的区域，由于 GPS 信号弱化甚至完全不可用，那么就必须另辟蹊径了，比如前面的 SLAM 就可以实现自身定位，除此之外，ROS 中还提供了一个用于定位的功能包: amcl
+
+**amcl**(adaptiveMonteCarloLocalization)自适应的蒙特卡洛定位,是用于2D移动机器人的概率定位系统。它实现了自适应（或KLD采样）蒙特卡洛定位方法，该方法使用粒子过滤器根据已知地图跟踪机器人的姿态。
+
+##### 3.路径规划
+
+导航就是机器人从A点运动至B点的过程，在这一过程中，机器人需要根据目标位置计算全局运动路线，并且在运动过程中，还需要时时根据出现的一些动态障碍物调整运动路线，直至到达目标点，该过程就称之为路径规划。在 ROS 中提供了 move\_base 包来实现路径规则,该功能包主要由两大规划器组成:
+
+1.  全局路径规划(gloable\_planner)
+    
+    根据给定的目标点和全局地图实现总体的路径规划，使用 Dijkstra 或 A\* 算法进行全局路径规划，计算最优路线，作为全局路线
+    
+2.  本地时时规划(local\_planner)
+    
+    在实际导航过程中，机器人可能无法按照给定的全局最优路线运行，比如:机器人在运行中，可能会随时出现一定的障碍物... 本地规划的作用就是使用一定算法(Dynamic Window Approaches) 来实现障碍物的规避，并选取当前最优路径以尽量符合全局最优路径
+    
+
+全局路径规划与本地路径规划是相对的，全局路径规划侧重于全局、宏观实现，而本地路径规划侧重与当前、微观实现。
+
+##### 4.运动控制
+
+导航功能包集假定它可以通过话题"cmd\_vel"发布`geometry_msgs/Twist`类型的消息，这个消息基于机器人的基座坐标系，它传递的是运动命令。这意味着必须有一个节点订阅"cmd\_vel"话题， 将该话题上的速度命令转换为电机命令并发送。
+
+##### 5.环境感知
+
+感知周围环境信息，比如: 摄像头、激光雷达、编码器...，摄像头、激光雷达可以用于感知外界环境的深度信息，编码器可以感知电机的转速信息，进而可以获取速度信息并生成里程计信息。
+
+在导航功能包集中，环境感知也是一重要模块实现，它为其他模块提供了支持。其他模块诸如: SLAM、amcl、move\_base 都需要依赖于环境感知。
+
+
+
+#### 7.1.2 导航之坐标系
+
+##### 1.简介
+
+定位是导航中的重要实现之一，所谓定位，就是参考某个坐标系(比如:以机器人的出发点为原点创建坐标系)在该坐标系中标注机器人。定位原理看似简单，但是这个这个坐标系不是客观存在的，我们也无法以上帝视角确定机器人的位姿，定位实现需要依赖于机器人自身，机器人需要逆向推导参考系原点并计算坐标系相对关系，该过程实现常用方式有两种:
+
+-   通过里程计定位:时时收集机器人的速度信息计算并发布机器人坐标系与父级参考系的相对关系。
+-   通过传感器定位:通过传感器收集外界环境信息通过匹配计算并发布机器人坐标系与父级参考系的相对关系。
+
+两种方式在导航中都会经常使用。
+
+##### 2.特点
+
+两种定位方式都有各自的优缺点。
+
+里程计定位:
+
+-   优点:里程计定位信息是连续的，没有离散的跳跃。
+-   缺点:里程计存在累计误差，不利于长距离或长期定位。
+
+传感器定位:
+
+-   优点:比里程计定位更精准；
+-   缺点:传感器定位会出现跳变的情况，且传感器定位在标志物较少的环境下，其定位精度会大打折扣。
+
+两种定位方式优缺点互补，应用时一般二者结合使用。
+
+##### 3.坐标系变换
+
+上述两种定位实现中，机器人坐标系一般使用机器人模型中的根坐标系(base\_link 或 base\_footprint)，里程计定位时，父级坐标系一般称之为 odom，如果通过传感器定位，父级参考系一般称之为 map。当二者结合使用时，map 和 odom 都是机器人模型根坐标系的父级，这是不符合坐标变换中"单继承"的原则的，所以，一般会将转换关系设置为: map -> doom -> base\_link 或 base\_footprint。
+
+___
+
+另请参考:
+
+-   [https://www.ros.org/reps/rep-0105.html](https://www.ros.org/reps/rep-0105.html)
+
+#### 7.1.3导航条件说明
+
+导航实现，在硬件和软件方面是由一定要求的，需要提前准备。
+
+##### 1.硬件
+
+虽然导航功能包集被设计成尽可能的通用，在使用时仍然有三个主要的硬件限制：
+
+1.  它是为差速驱动的轮式机器人设计的。它假设底盘受到理想的运动命令的控制并可实现预期的结果，命令的格式为：x速度分量，y速度分量，角速度(theta)分量。
+    
+2.  它需要在底盘上安装一个单线激光雷达。这个激光雷达用于构建地图和定位。
+    
+3.  导航功能包集是为正方形的机器人开发的，所以方形或圆形的机器人将是性能最好的。 它也可以工作在任意形状和大小的机器人上，但是较大的机器人将很难通过狭窄的空间。
+    
+
+##### 2.软件
+
+导航功能实现之前，需要搭建一些软件环境:
+
+1.  毋庸置疑的，必须先要安装 ROS
+    
+2.  当前导航基于仿真环境，先保证上一章的机器人系统仿真可以正常执行
+    
+    在仿真环境下，机器人可以正常接收 /cmd\_vel 消息，并发布里程计消息，传感器消息发布也正常，也即导航模块中的运动控制和环境感知实现完毕
+    
+
+后续导航实现中，我们主要关注于: 使用 SLAM 绘制地图、地图服务、自身定位与路径规划。
+
+
+
+### 7.2 导航实现
+
+本节内容主要介绍导航的完整性实现，旨在掌握机器人导航的基本流程，该章涉及的主要内容如下:
+
+-   SLAM建图(选用较为常见的gmapping)
+    
+-   地图服务(可以保存和重现地图)
+    
+-   机器人定位
+    
+-   路径规划
+    
+-   上述流程介绍完毕，还会对功能进一步集成实现探索式的SLAM建图。
+    
+
+___
+
+**准备工作**
+
+请先安装相关的ROS功能包:
+
+-   安装 gmapping 包(用于构建地图):`sudo apt install ros-<ROS版本>-gmapping`
+    
+-   安装地图服务包(用于保存与读取地图):`sudo apt install ros-<ROS版本>-map-server`
+    
+-   安装 navigation 包(用于定位以及路径规划):`sudo apt install ros-<ROS版本>-navigation`
+    
+
+新建功能包，并导入依赖: gmapping map\_server amcl move\_base
+
+
+
+#### 7.2.1 导航实现01\_SLAM建图
+
+SLAM算法有多种，当前我们选用gmapping，后续会再介绍其他几种常用的SLAM实现。
+
+1.gmapping简介
+
+gmapping 是ROS开源社区中较为常用且比较成熟的SLAM算法之一，gmapping可以根据移动机器人里程计数据和激光雷达数据来绘制二维的栅格地图，对应的，gmapping对硬件也有一定的要求:
+
+-   该移动机器人可以发布里程计消息
+-   机器人需要发布雷达消息(该消息可以通过水平固定安装的雷达发布，或者也可以将深度相机消息转换成雷达消息)
+
+关于里程计与雷达数据，仿真环境中可以正常获取的，不再赘述，栅格地图如案例所示。
+
+gmapping 安装前面也有介绍，命令如下:
+
+> `sudo apt install ros-<ROS版本>-gmapping`
+
+2.gmapping节点说明
+
+gmapping 功能包中的核心节点是:slam\_gmapping。为了方便调用，需要先了解该节点订阅的话题、发布的话题、服务以及相关参数。
+
+2.1订阅的Topic
+
+tf (tf/tfMessage)
+
+-   用于雷达、底盘与里程计之间的坐标变换消息。
+
+scan(sensor\_msgs/LaserScan)
+
+-   SLAM所需的雷达信息。
+
+2.2发布的Topic
+
+map\_metadata(nav\_msgs/MapMetaData)
+
+-   地图元数据，包括地图的宽度、高度、分辨率等，该消息会固定更新。
+
+map(nav\_msgs/OccupancyGrid)
+
+-   地图栅格数据，一般会在rviz中以图形化的方式显示。
+
+~entropy(std\_msgs/Float64)
+
+-   机器人姿态分布熵估计(值越大，不确定性越大)。
+
+2.3服务
+
+dynamic\_map(nav\_msgs/GetMap)
+
+-   用于获取地图数据。
+
+2.4参数
+
+~base\_frame(string, default:"base\_link")
+
+-   机器人基坐标系。
+
+~map\_frame(string, default:"map")
+
+-   地图坐标系。
+
+~odom\_frame(string, default:"odom")
+
+-   里程计坐标系。
+
+~map\_update\_interval(float, default: 5.0)
+
+-   地图更新频率，根据指定的值设计更新间隔。
+
+~maxUrange(float, default: 80.0)
+
+-   激光探测的最大可用范围(超出此阈值，被截断)。
+
+~maxRange(float)
+
+-   激光探测的最大范围。
+
+.... 参数较多，上述是几个较为常用的参数，其他参数介绍可参考官网。
+
+2.5所需的坐标变换
+
+雷达坐标系→基坐标系
+
+-   一般由 robot\_state\_publisher 或 static\_transform\_publisher 发布。
+
+基坐标系→里程计坐标系
+
+-   一般由里程计节点发布。
+
+2.6发布的坐标变换
+
+地图坐标系→里程计坐标系
+
+-   地图到里程计坐标系之间的变换。
+
+3.gmapping使用
+
+3.1编写gmapping节点相关launch文件
+
+launch文件编写可以参考 github 的演示 launch文件：[https://github.com/ros-perception/slam\_gmapping/blob/melodic-devel/gmapping/launch/slam\_gmapping\_pr2.launch](https://github.com/ros-perception/slam_gmapping/blob/melodic-devel/gmapping/launch/slam_gmapping_pr2.launch)
+
+复制并修改如下:
+
+/home/book/ws/src/nav_demo/launch/nav01_slam.launch
+
+```xml
+<launch>
+    <param name="use_sim_time" value="true"/><!--仿真环境下，将该参数设置为 true-->
+    <!-- gmapping节点,用于同步定位与建图 -->
+    <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" output="screen">
+      <!-- 设置雷达话题 -->
+      <remap from="scan" to="scan"/>
+      <param name="base_frame" value="base_footprint"/><!--底盘坐标系-->
+      <param name="map_frame" value="map"/><!--全局固定坐标系-->
+      <param name="odom_frame" value="odom"/> <!--里程计坐标系-->
+      <param name="map_update_interval" value="5.0"/><!--雷达更新间隔-->
+      <param name="maxUrange" value="16.0"/>
+      <param name="sigma" value="0.05"/>
+      <param name="kernelSize" value="1"/>
+      <param name="lstep" value="0.05"/>
+      <param name="astep" value="0.05"/>
+      <param name="iterations" value="5"/>
+      <param name="lsigma" value="0.075"/>
+      <param name="ogain" value="3.0"/>
+      <param name="lskip" value="0"/>
+      <param name="srr" value="0.1"/>
+      <param name="srt" value="0.2"/>
+      <param name="str" value="0.1"/>
+      <param name="stt" value="0.2"/>
+      <param name="linearUpdate" value="1.0"/>
+      <param name="angularUpdate" value="0.5"/>
+      <param name="temporalUpdate" value="3.0"/>
+      <param name="resampleThreshold" value="0.5"/>
+      <param name="particles" value="30"/>
+      <param name="xmin" value="-50.0"/>
+      <param name="ymin" value="-50.0"/>
+      <param name="xmax" value="50.0"/>
+      <param name="ymax" value="50.0"/>
+      <param name="delta" value="0.05"/>
+      <param name="llsamplerange" value="0.01"/>
+      <param name="llsamplestep" value="0.01"/>
+      <param name="lasamplerange" value="0.005"/>
+      <param name="lasamplestep" value="0.005"/>
+    </node>
+
+    <node pkg="joint_state_publisher" name="joint_state_publisher" type="joint_state_publisher" />
+    <node pkg="robot_state_publisher" name="robot_state_publisher" type="robot_state_publisher" />
+
+    <node pkg="rviz" type="rviz" name="rviz" />
+    <!-- 可以保存 rviz 配置并后期直接使用-->
+    <!--
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find my_nav_sum)/rviz/gmapping.rviz"/>
+    -->
+</launch>
+```
+
+关键代码解释：
+
+```xml
+<remap from="scan" to="scan"/><!-- 雷达话题 -->
+<param name="base_frame" value="base_footprint"/><!--底盘坐标系-->
+<param name="odom_frame" value="odom"/> <!--里程计坐标系-->
+```
+
+3.2执行
+
+1.先启动 Gazebo 仿真环境(此过程略)
+
+2.然后再启动地图绘制的 launch 文件:
+
+`roslaunch 包名 launch文件名`
+
+3.启动键盘键盘控制节点，用于控制机器人运动建图
+
+`rosrun teleop_twist_keyboard teleop_twist_keyboard.py`
+
+4.在 rviz 中添加组件，显示栅格地图![](pic_linux/slam演示-17343581110372.PNG)最后，就可以通过键盘控制gazebo中的机器人运动，同时，在rviz中可以显示gmapping发布的栅格地图数据了，下一步，还需要将地图单独保存。
+
+___
+
+**另请参考:**
+
+-   [http://wiki.ros.org/gmapping](http://wiki.ros.org/gmapping)
+
+
+
+#### 7.2.2 导航实现02\_地图服务
+
+上一节我们已经实现通过gmapping的构建地图并在rviz中显示了地图，不过，上一节中地图数据是保存在内存中的，当节点关闭时，数据也会被一并释放，我们需要将栅格地图序列化到的磁盘以持久化存储，后期还要通过反序列化读取磁盘的地图数据再执行后续操作。在ROS中，地图数据的序列化与反序列化可以通过 map\_server 功能包实现。
+
+1.map\_server简介
+
+map\_server功能包中提供了两个节点: map\_saver 和 map\_server，前者用于将栅格地图保存到磁盘，后者读取磁盘的栅格地图并以服务的方式提供出去。
+
+map\_server安装前面也有介绍，命令如下:
+
+> `sudo apt install ros-<ROS版本>-map-server`
+
+2.map\_server使用之地图保存节点(map\_saver)
+
+2.1map\_saver节点说明
+
+**订阅的topic:**
+
+map(nav\_msgs/OccupancyGrid)
+
+-   订阅此话题用于生成地图文件。
+
+2.2地图保存launch文件
+
+地图保存的语法比较简单，编写一个launch文件，内容如下:
+
+/home/book/ws/src/nav_demo/launch/nav02_map_save.launch
+
+```xml
+<launch>
+    <arg name="filename" value="$(find nav_demo)/map/nav" />
+    <node name="map_save" pkg="map_server" type="map_saver" args="-f $(arg filename)" />
+</launch>
+```
+
+其中 mymap 是指地图的保存路径以及保存的文件名称。
+
+SLAM建图完毕后，执行该launch文件即可。
+
+测试:
+
+> 首先，参考上一节，依次启动仿真环境，键盘控制节点与SLAM节点；
+>
+> 然后，通过键盘控制机器人运动并绘图；
+>
+> 最后，通过上述地图保存方式保存地图。
+>
+> 结果：在指定路径下会生成两个文件，xxx.pgm 与 xxx.yaml
+
+2.3 保存结果解释
+
+![](pic_linux/地图保存.PNG)
+
+xxx.pgm 本质是一张图片，直接使用图片查看程序即可打开。
+
+xxx.yaml 保存的是地图的元数据信息，用于描述图片，内容格式如下:
+
+/home/book/ws/src/nav_demo/map/nav.yaml
+
+```yaml
+#1.声明地图图片资源的路径
+image: /home/book/ws/src/nav_demo/map/nav.pgm
+#2.地图刻度尺 单位：米/像素
+resolution: 0.050000
+#3.地图右下角相对于Axes绝对坐标系的位姿信息（相对于rviz原点的位置）[x,y,偏航角]
+origin: [-50.000000, -50.000000, 0.000000]
+#4.取反（黑白变换）
+negate: 0
+
+# 地图的障碍物判断：
+# 最终地图结果：白色是可通行区域，黑色的障碍物，蓝灰是未知区域
+# 判断规则：
+# 1.地图中的每个像素都有取值[0,255],白色255，黑色0
+# 2.根据像素值计算一个比例： p=(255-x)/255 白色0 黑色1，灰色是介于0~1的值
+# 3.判断是障碍物：p>occupied_thresh是障碍物，p<free_thresh 是无障碍物
+# 4.如果像素值在两阈值之间，表示未知区域
+
+#5.占用阈值
+occupied_thresh: 0.65
+#6.空闲阈值 （占用阈值和空闲阈值用于判断地图上的是否有障碍物）
+free_thresh: 0.196
+```
+
+解释:
+
+-   **image**:被描述的图片资源路径，可以是绝对路径也可以是相对路径。
+    
+-   **resolution**: 图片分片率(单位: m/像素)。
+    
+-   **origin**: 地图中左下像素的二维姿势，为（x，y，偏航），偏航为逆时针旋转（偏航= 0表示无旋转）。
+    
+-   **occupied\_thresh**: 占用概率大于此阈值的像素被视为完全占用。
+    
+-   **free\_thresh**: 占用率小于此阈值的像素被视为完全空闲。
+    
+-   **negate**: 是否应该颠倒白色/黑色自由/占用的语义。
+    
+
+map\_server 中障碍物计算规则:
+
+1.  地图中的每一个像素取值在 \[0,255\] 之间，白色为 255，黑色为 0，该值设为 x；
+2.  map\_server 会将像素值作为判断是否是障碍物的依据，首先计算比例: p = (255 - x) / 255.0，白色为0，黑色为1(negate为true，则p = x / 255.0)；
+3.  根据步骤2计算的比例判断是否是障碍物，如果 p > occupied\_thresh 那么视为障碍物，如果 p < free\_thresh 那么视为无物。
+
+备注:
+
+-   图片也可以根据需求编辑。
+
+3.map\_server使用之地图服务(map\_server)
+
+3.1map\_server节点说明
+
+**发布的话题**
+
+map\_metadata（nav\_msgs / MapMetaData）
+
+-   发布地图元数据。
+
+map（nav\_msgs / OccupancyGrid）
+
+-   地图数据。
+
+**服务**
+
+static\_map（nav\_msgs / GetMap）
+
+-   通过此服务获取地图。
+
+**参数**
+
+〜frame\_id（字符串，默认值：“map”）
+
+-   地图坐标系。
+
+3.2地图读取
+
+通过 map\_server 的 map\_server 节点可以读取栅格地图数据，编写 launch 文件如下:
+
+/home/book/ws/src/nav_demo/launch/nav03_map_server.launch
+
+```xml
+<launch>
+    <!-- 设置地图的配置文件 -->
+    <arg name="map" default="nav.yaml" />
+    <!-- 运行地图服务器，并且加载设置的地图-->
+    <node name="map_server" pkg="map_server" type="map_server" args="$(find nav_demo)/map/$(arg map)"/>
+</launch>
+```
+
+其中参数是地图描述文件的资源路径，执行该launch文件，该节点会发布话题:map(nav\_msgs/OccupancyGrid)
+
+3.3地图显示
+
+在 rviz 中使用 map 组件可以显示栅格地图：
+
+![](pic_linux/地图显示.PNG)
+
+___
+
+另请参考:
+
+-   [http://wiki.ros.org/map\_server](http://wiki.ros.org/map_server)
