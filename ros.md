@@ -10859,7 +10859,7 @@ ___
 
 
 
-#### 7.2.1 01\_SLAM建图
+#### 7.2.1 SLAM建图
 
 SLAM算法有多种，当前我们选用gmapping，后续会再介绍其他几种常用的SLAM实现。
 
@@ -11045,7 +11045,7 @@ ___
 
 
 
-#### 7.2.2 02\_地图服务
+#### 7.2.2 地图服务
 
 上一节我们已经实现通过gmapping的构建地图并在rviz中显示了地图，不过，上一节中地图数据是保存在内存中的，当节点关闭时，数据也会被一并释放，我们需要将栅格地图序列化到的磁盘以持久化存储，后期还要通过反序列化读取磁盘的地图数据再执行后续操作。在ROS中，地图数据的序列化与反序列化可以通过 map\_server 功能包实现。
 
@@ -11208,7 +11208,7 @@ ___
 
 -   [http://wiki.ros.org/map\_server](http://wiki.ros.org/map_server)
 
-#### 7.2.3 03\_定位
+#### 7.2.3 定位
 
 所谓定位就是推算机器人自身在全局地图中的位置，当然，SLAM中也包含定位算法实现，不过SLAM的定位是用于构建全局地图的，是属于导航开始之前的阶段，而当前定位是用于导航中，导航中，机器人需要按照设定的路线运动，通过定位可以判断机器人的实际轨迹是否符合预期。在ROS的导航功能包集navigation中提供了 amcl 功能包，用于实现导航中的机器人定位。
 
@@ -11419,7 +11419,7 @@ ___
 
 
 
-#### 7.2.4 04\_路径规划
+#### 7.2.4 路径规划
 
 毋庸置疑的，路径规划是导航中的核心功能之一，在ROS的导航功能包集navigation中提供了 move\_base 功能包，用于实现此功能。
 
@@ -11745,3 +11745,2158 @@ ___
 **另请参考:**
 
 -   [http://wiki.ros.org/move\_base](http://wiki.ros.org/move_base)
+
+
+
+#### 7.2.5 导航与SLAM
+
+> 场景:在 7.2.1 导航实现01\_SLAM建图中，我们是通过键盘控制机器人移动实现建图的，而后续又介绍了机器人的自主移动实现，那么可不可以将二者结合，实现机器人自主移动的SLAM建图呢？
+
+上述需求是可行的。虽然可能会有疑问，导航时需要地图信息，之前导航实现时，是通过 map\_server 包的 map\_server 节点来发布地图信息的，如果不先通过SLAM建图，那么如何发布地图信息呢？SLAM建图过程中本身就会时时发布地图信息，所以无需再使用map\_server，SLAM已经发布了话题为 /map 的地图消息了，且导航需要定位模块，SLAM本身也是可以实现定位的。
+
+该过程实现比较简单，步骤如下:
+
+1.  编写launch文
+1.  件，集成SLAM与move\_base相关节点；
+2.  执行launch文件并测试。
+
+1.编写launc文件
+
+当前launch文件实现，无需调用map\_server的相关节点，只需要启动SLAM节点与move\_base节点，示例内容如下:
+
+/home/book/ws/src/nav_demo/launch/nav07_slam_auto.launch
+
+```xml
+<!-- 集成SLAM与a导航，实现机器人自主移动的地图构建 -->
+<launch>
+    <!-- 启动SLAM节点 -->
+    <include file="$(find nav_demo)/launch/nav01_slam.launch" />
+    <!-- 运行move_base节点 -->
+    <include file="$(find nav_demo)/launch/nav05_path.launch" />
+    <!-- 运行rviz -->
+    <!-- <node pkg="rviz" type="rviz" name="rviz" args="-d $(find mycar_nav)/rviz/nav.rviz" /> -->
+    <!-- nav01_slam.launch 已经包含了运行rviz的语句了 -->
+</launch>
+```
+
+2.测试
+
+1.首先运行gazebo仿真环境；
+
+2.然后执行launch文件；
+
+3.在rviz中通过2D Nav Goal设置目标点，机器人开始自主移动并建图了；
+
+4.最后可以使用 map\_server 保存地图。
+
+![](pic_linux/自主移动SLAM.gif)
+
+### 7.3 导航相关消息
+
+在导航功能包集中包含了诸多节点，毋庸置疑的，不同节点之间的通信使用到了消息中间件(数据载体)，在上一节的实现中，这些消息已经在rviz中做了可视化处理，比如:地图、雷达、摄像头、里程计、路径规划...的相关消息在rviz中提供了相关组件，本节主要介绍这些消息的具体格式。
+
+#### 7.3.1 地图
+
+地图相关的消息主要有两个:
+
+nav\_msgs/MapMetaData
+
+-   地图元数据，包括地图的宽度、高度、分辨率等。
+
+nav\_msgs/OccupancyGrid
+
+-   地图栅格数据，一般会在rviz中以图形化的方式显示。
+
+1.nav\_msgs/MapMetaData
+
+调用`rosmsg info nav_msgs/MapMetaData`显示消息内容如下:
+
+```shell
+time map_load_time
+float32 resolution #地图分辨率	x米/像素
+uint32 width #地图宽度
+uint32 height #地图高度
+geometry_msgs/Pose origin #地图位姿数据
+  geometry_msgs/Point position
+    float64 x
+    float64 y
+    float64 z
+  geometry_msgs/Quaternion orientation
+    float64 x
+    float64 y
+    float64 z
+    float64 w
+```
+
+测试
+
+```shell
+roslaunch nav_demo nav03_map_server.launch 	#读取已保存的地图，并发布话题
+```
+
+```shell
+rostopic echo /map >> map1.text	#将地图话题数据保存到map1.txt
+```
+
+查看全局代价地图
+
+测试（完整仿真环境）
+
+```shell
+roslaunch urdf02_gazebo demo03_env.launch	#启动gazebo仿真环境
+```
+
+```shell
+roslaunch nav_demo nav06_test.launch	 #启动完整导航代码
+```
+
+```shell
+rostopic echo /move_base/global_costmap/costmap >> map2.txt		#将代价地图数据保存到map2.txt
+```
+
+​			
+
+2.nav\_msgs/OccupancyGrid
+
+调用 `rosmsg info nav_msgs/OccupancyGrid`显示消息内容如下:
+
+```shell
+std_msgs/Header header
+  uint32 seq
+  time stamp
+  string frame_id
+#--- 地图元数据
+nav_msgs/MapMetaData info
+  time map_load_time
+  float32 resolution
+  uint32 width
+  uint32 height
+  geometry_msgs/Pose origin
+    geometry_msgs/Point position
+      float64 x
+      float64 y
+      float64 z
+    geometry_msgs/Quaternion orientation
+      float64 x
+      float64 y
+      float64 z
+      float64 w
+#--- 地图内容数据，数组长度 = width * height
+int8[] data
+```
+
+
+
+#### 7.3.2 里程计
+
+里程计相关消息是:nav\_msgs/Odometry，调用`rosmsg info nav_msgs/Odometry` 显示消息内容如下:
+
+```shell
+std_msgs/Header header
+  uint32 seq
+  time stamp
+  string frame_id
+string child_frame_id
+geometry_msgs/PoseWithCovariance pose
+  geometry_msgs/Pose pose #里程计位姿
+    geometry_msgs/Point position
+      float64 x
+      float64 y
+      float64 z
+    geometry_msgs/Quaternion orientation
+      float64 x
+      float64 y
+      float64 z
+      float64 w
+  float64[36] covariance
+geometry_msgs/TwistWithCovariance twist
+  geometry_msgs/Twist twist #速度
+    geometry_msgs/Vector3 linear
+      float64 x
+      float64 y
+      float64 z
+    geometry_msgs/Vector3 angular
+      float64 x
+      float64 y
+      float64 z    
+  # 协方差矩阵
+  float64[36] covariance
+```
+
+测试
+
+启动gazebo仿真环境、启动完整导航代码
+
+```shell
+rostopic echo /odom		#里程计消息
+```
+
+```shell
+rosrun teleop_twist_keyboard teleop_twist_keyboard.py 
+#键盘控制机器人运动，查看里程计消息
+```
+
+#### 7.3.3 坐标变换
+
+坐标变换相关消息是: tf/tfMessage，调用`rosmsg info tf/tfMessage` 显示消息内容如下:
+
+```shell
+geometry_msgs/TransformStamped[] transforms #包含了多个坐标系相对关系数据的数组
+  std_msgs/Header header
+    uint32 seq
+    time stamp
+    string frame_id
+  string child_frame_id
+  geometry_msgs/Transform transform
+    geometry_msgs/Vector3 translation	#子级坐标系相对于父级坐标系的相对关系
+      float64 x
+      float64 y
+      float64 z
+    geometry_msgs/Quaternion rotation	#欧拉角相关四元数
+      float64 x
+      float64 y
+      float64 z
+      float64 w
+```
+
+#### 7.3.4 定位
+
+rviz中amcl起作用，PoseArray插件
+
+定位相关消息是:geometry\_msgs/PoseArray，调用`rosmsg info geometry_msgs/PoseArray`显示消息内容如下:
+
+```shell
+std_msgs/Header header
+  uint32 seq
+  time stamp
+  string frame_id
+geometry_msgs/Pose[] poses #预估的点位姿组成的数组
+  geometry_msgs/Point position
+    float64 x
+    float64 y
+    float64 z
+  geometry_msgs/Quaternion orientation
+    float64 x
+    float64 y
+    float64 z
+    float64 w
+```
+
+#### 7.3.5 目标点与路径规划
+
+rviz中的2D Nav Goal,添加组件Path
+
+目标点相关消息是:move\_base\_msgs/MoveBaseActionGoal，
+
+调用`rosmsg info move_base_msgs/MoveBaseActionGoal`显示消息内容如下:
+
+```shell
+std_msgs/Header header
+  uint32 seq
+  time stamp
+  string frame_id	#坐标系id
+actionlib_msgs/GoalID goal_id	#标志性序列号
+  time stamp
+  string id
+move_base_msgs/MoveBaseGoal goal	#目标点具体数据
+  geometry_msgs/PoseStamped target_pose		#目标位姿
+    std_msgs/Header header	#头数据
+      uint32 seq	#序列化号
+      time stamp	#时间戳
+      string frame_id	
+    geometry_msgs/Pose pose #目标点位姿
+      geometry_msgs/Point position	#位姿坐标
+        float64 x
+        float64 y
+        float64 z
+      geometry_msgs/Quaternion orientation	#四元数数据
+        float64 x
+        float64 y
+        float64 z
+        float64 w
+```
+
+路径规划相关消息是:nav\_msgs/Path，调用`rosmsg info nav_msgs/Path`显示消息内容如下:
+
+导航过程中的绿线
+
+```shell
+std_msgs/Header header	#头数据
+  uint32 seq
+  time stamp
+  string frame_id
+geometry_msgs/PoseStamped[] poses #由一系列点组成的数组
+  std_msgs/Header header	
+    uint32 seq
+    time stamp
+    string frame_id
+  geometry_msgs/Pose pose
+    geometry_msgs/Point position
+      float64 x
+      float64 y
+      float64 z
+    geometry_msgs/Quaternion orientation
+      float64 x
+      float64 y
+      float64 z
+      float64 w
+```
+
+#### 7.3.6 激光雷达
+
+激光雷达相关消息是:sensor\_msgs/LaserScan，调用`rosmsg info sensor_msgs/LaserScan`显示消息内容如下:
+
+```shell
+std_msgs/Header header
+  uint32 seq
+  time stamp
+  string frame_id	#雷达名称
+float32 angle_min #起始扫描角度(rad)
+float32 angle_max #终止扫描角度(rad)
+float32 angle_increment #测量值之间的角距离(rad)
+float32 time_increment #测量间隔时间(s)
+float32 scan_time #扫描间隔时间(s)
+float32 range_min #最小有效距离值(m)
+float32 range_max #最大有效距离值(m)
+float32[] ranges #一个周期的扫描数据，障碍物距离
+float32[] intensities #扫描强度数据，如果设备不支持强度数据，该数组为空
+```
+
+测试
+
+启动gazebo与导航代码
+
+```
+rostopic echo /scan >> laser.txt
+```
+
+#### 7.3.7 导航之相机
+
+深度相机相关消息有:sensor\_msgs/Image、sensor\_msgs/CompressedImage、sensor\_msgs/PointCloud2
+
+sensor\_msgs/Image 对应的一般的图像数据，sensor\_msgs/CompressedImage 对应压缩后的图像数据，sensor\_msgs/PointCloud2 对应的是点云数据(带有深度信息的图像数据)。
+
+调用`rosmsg info sensor_msgs/Image`显示消息内容如下:
+
+```
+std_msgs/Header header
+  uint32 seq
+  time stamp
+  string frame_id
+uint32 height #高度
+uint32 width  #宽度
+string encoding #编码格式:RGB、YUV等
+uint8 is_bigendian #图像大小端存储模式
+uint32 step #一行图像数据的字节数，作为步进参数
+uint8[] data #图像数据，长度等于 step * height
+```
+
+调用`rosmsg info sensor_msgs/CompressedImage`显示消息内容如下:
+
+```
+std_msgs/Header header
+  uint32 seq
+  time stamp
+  string frame_id
+string format #压缩编码格式(jpeg、png、bmp)
+uint8[] data #压缩后的数据
+```
+
+调用`rosmsg info sensor_msgs/PointCloud2`显示消息内容如下:
+
+```shell
+std_msgs/Header header
+  uint32 seq
+  time stamp
+  string frame_id
+uint32 height #高度
+uint32 width  #宽度
+sensor_msgs/PointField[] fields #每个点的数据类型
+  uint8 INT8=1
+  uint8 UINT8=2
+  uint8 INT16=3
+  uint8 UINT16=4
+  uint8 INT32=5
+  uint8 UINT32=6
+  uint8 FLOAT32=7
+  uint8 FLOAT64=8
+  string name
+  uint32 offset
+  uint8 datatype
+  uint32 count
+bool is_bigendian #图像大小端存储模式
+uint32 point_step #单点的数据字节步长
+uint32 row_step   #一行数据的字节步长
+uint8[] data      #存储点云的数组，总长度为 row_step * height
+bool is_dense     #是否有无效点
+```
+
+测试
+
+启动gazebo仿真环境
+
+```shell
+roslaunch urdf02_gazebo demo04_sensor.launch #启动带相机服务的程序
+```
+
+```shell
+book@100ask:~$ rostopic info /camera/rgb/image_raw
+Type: sensor_msgs/Image
+
+Publishers: 
+ * /gazebo (http://100ask:44545/)
+
+Subscribers: None
+
+
+book@100ask:~$ rostopic info /camera/depth/image_raw 
+Type: sensor_msgs/Image
+
+Publishers: 
+ * /gazebo (http://100ask:44545/)
+
+Subscribers: None
+
+
+book@100ask:~$ rostopic info /camera/image_raw
+Type: sensor_msgs/Image
+
+Publishers: 
+ * /gazebo (http://100ask:44545/)
+
+Subscribers: 
+ * /rviz (http://100ask:34169/)
+```
+
+```shell
+rostopic  echo  /camera/rgb/image_raw  >>  camera.txt		#摄像头数据
+```
+
+```shell
+rostopic echo /camera/depth/points >> points.txt  #点云数据
+```
+
+#### 7.3.5 深度图像转激光数据
+
+本节介绍ROS中的一个功能包:depthimage\_to\_laserscan，顾名思义，该功能包可以将深度图像信息转换成激光雷达信息，应用场景如下:
+
+> 在诸多SLAM算法中，一般都需要订阅激光雷达数据用于构建地图，因为激光雷达可以感知周围环境的深度信息，而深度相机也具备感知深度信息的功能，且最初激光雷达价格比价比较昂贵，那么在传感器选型上可以选用深度相机代替激光雷达吗？
+
+答案是可以的，不过二者发布的消息类型是完全不同的，如果想要实现传感器的置换，那么就需要将深度相机发布的三维的图形信息转换成二维的激光雷达信息，这一功能就是通过depthimage\_to\_laserscan来实现的。
+
+1.depthimage\_to\_laserscan简介
+
+1.1原理
+
+depthimage\_to\_laserscan将实现深度图像与雷达数据转换的原理比较简单，雷达数据是二维的、平面的，深度图像是三维的，是若干二维(水平)数据的纵向叠加，如果将三维的数据转换成二维数据，只需要取深度图的某一层即可，为了方面理解，请看官方示例:
+
+图一:深度相机与外部环境(实物图)
+
+![](pic_linux/i2l_G1.jpg)
+
+图二:深度相机发布的图片信息，图中彩线对应的是要转换成雷达信息的数据
+
+![](pic_linux/i2l_G2.png)
+
+图三:将图二以点云的方式显示更为直观，图中彩线对应的仍然是要转换成雷达信息的数据
+
+![](pic_linux/i2l_G3.png)
+
+图四:转换之后的结果图(俯视)
+
+![](pic_linux/i2l_G4.png)
+
+1.2优缺点
+
+**优点:**深度相机的成本一般低于激光雷达，可以降低硬件成本；
+
+**缺点:** 深度相机较之于激光雷达无论是检测范围还是精度都有不小的差距，SLAM效果可能不如激光雷达理想。
+
+1.3安装
+
+使用之前请先安装,命令如下:
+
+```
+sudo apt-get install ros-melodic-depthimage-to-laserscan
+```
+
+2.depthimage\_to\_laserscan节点说明
+
+depthimage\_to\_laserscan 功能包的核心节点是:depthimage\_to\_laserscan ，为了方便调用，需要先了解该节点订阅的话题、发布的话题以及相关参数。
+
+2.1订阅的Topic
+
+image(sensor\_msgs/Image)
+
+-   输入图像信息。
+
+camera\_info(sensor\_msgs/CameraInfo)
+
+-   关联图像的相机信息。通常不需要重新映射，因为camera\_info将从与image相同的命名空间中进行订阅。
+
+2.2发布的Topic
+
+scan(sensor\_msgs/LaserScan)
+
+-   发布转换成的激光雷达类型数据。
+
+2.3参数
+
+该节点参数较少，只有如下几个，一般需要设置的是: output\_frame\_id。
+
+~scan\_height(int, default: 1 pixel)
+
+-   设置用于生成激光雷达信息的象素行数。
+
+~scan\_time(double, default: 1/30.0Hz (0.033s))
+
+-   两次扫描的时间间隔。
+
+~range\_min(double, default: 0.45m)
+
+-   返回的最小范围。结合range\_max使用，只会获取 range\_min 与 range\_max 之间的数据。
+
+~range\_max(double, default: 10.0m)
+
+-   返回的最大范围。结合range\_min使用，只会获取 range\_min 与 range\_max 之间的数据。
+
+~output\_frame\_id(str, default: camera\_depth\_frame)
+
+-   激光信息的ID。
+
+3.depthimage\_to\_laserscan使用
+
+3.1编写launch文件
+
+编写launch文件执行，将深度信息转换成雷达信息
+
+```shell
+<launch>
+    <node pkg="depthimage_to_laserscan" type="depthimage_to_laserscan" name="depthimage_to_laserscan">
+        <remap from="image" to="/camera/depth/image_raw" />
+        <param name="output_frame_id" value="camera"  />
+    </node>
+</launch>
+```
+
+订阅的话题需要根据深度相机发布的话题设置，output\_frame\_id需要与深度相机的坐标系一致。
+
+3.2修改URDF文件
+
+经过信息转换之后，深度相机也将发布雷达数据，为了不产生混淆，可以注释掉 xacro 文件中的关于激光雷达的部分内容。
+
+3.3执行
+
+1.启动gazebo仿真环境，如下:
+
+![](pic_linux/i2l_仿真.PNG)
+
+2.启动rviz并添加相关组件(image、LaserScan)，结果如下:
+
+![](pic_linux/i2l_rviz.PNG)4.SLAM应用
+
+现在我们已经实现并测试通过深度图像信息转换成激光雷达信息了，接下来是实践阶段，通过深度相机实现SLAM，流程如下:
+
+1.先启动 Gazebo 仿真环境；
+
+2.启动转换节点；
+
+3.再启动地图绘制的 launch 文件；
+
+4.启动键盘键盘控制节点，用于控制机器人运动建图；
+
+`rosrun teleop_twist_keyboard teleop_twist_keyboard.py`
+
+5.在 rviz 中添加组件，显示栅格地图最后，就可以通过键盘控制gazebo中的机器人运动，同时，在rviz中可以显示gmapping发布的栅格地图数据了，但是，前面也介绍了，由于精度和检测范围的原因，尤其再加之环境的特征点偏少，建图效果可能并不理想，建图中甚至会出现地图偏移的情况。
+
+## 第十章 ROS进阶
+
+在本教程的第二章内容介绍了ROS的核心实现:通信机制 ——话题通信、服务通信和参数服务器。三者结合可以满足ROS中的大多数数据传输相关的应用场景，但是在一些特定场景下可能就有些力不从心了，本章主要介绍之前的通信机制存在的问题以及对应的优化策略，本章主要内容如下:
+
+-   action通信；
+-   动态参数；
+-   pluginlib；
+-   nodelet。
+
+本章预期达成的学习目标:
+
+-   了解服务通信应用的局限性(action的应用场景)，熟练掌握action的理论模型与实现流程；
+-   了解参数服务器应用的局限性(动态配置参数的应用场景)，熟练掌握动态配置参数的实现流程；
+-   了解插件的概念以及使用流程；
+-   了解nodelet的应用场景以及使用流程。
+
+### 10.1 Action 通信
+
+关于action通信，我们先从之前导航中的应用场景开始介绍，描述如下:
+
+> 机器人导航到某个目标点,此过程需要一个节点A发布目标信息，然后一个节点B接收到请求并控制移动，最终响应目标达成状态信息。
+
+乍一看，这好像是服务通信实现，因为需求中要A发送目标，B执行并返回结果，这是一个典型的基于请求响应的应答模式，不过，如果只是使用基本的服务通信实现，存在一个问题：**导航是一个过程，是耗时操作，如果使用服务通信，那么只有在导航结束时，才会产生响应结果，而在导航过程中，节点A是不会获取到任何反馈的，从而可能出现程序"假死"的现象，过程的不可控意味着不良的用户体验，以及逻辑处理的缺陷(比如:导航中止的需求无法实现)。**更合理的方案应该是:导航过程中，可以连续反馈当前机器人状态信息，当导航终止时，再返回最终的执行结果。在ROS中，该实现策略称之为:**action 通信**。
+
+___
+
+**概念**
+
+在ROS中提供了actionlib功能包集，用于实现 action 通信。action 是一种类似于服务通信的实现，其实现模型也包含请求和响应，但是不同的是，在请求和响应的过程中，服务端还可以连续的反馈当前任务进度，客户端可以接收连续反馈并且还可以取消任务。
+
+**action结构图解:**
+
+![](pic_linux/action1-173546288391611.png)
+
+**action通信接口图解:**
+
+![](pic_linux/action2-173546288391812.png)
+
+-    goal:目标任务;
+-   cacel:取消任务;
+-   status:服务端状态;
+-   result:最终执行结果(只会发布一次);
+-   feedback:连续反馈(可以发布多次)。
+
+**作用**
+
+一般适用于耗时的请求响应场景,用以获取连续的状态反馈。
+
+**案例**
+
+创建两个ROS 节点，服务器和客户端，客户端可以向服务器发送目标数据N(一个整型数据)服务器会计算 1 到 N 之间所有整数的和,这是一个循环累加的过程，返回给客户端，这是基于请求响应模式的，又已知服务器从接收到请求到产生响应是一个耗时操作，每累加一次耗时0.1s，为了良好的用户体验，需要服务器在计算过程中，每累加一次，就给客户端响应一次百分比格式的执行进度，使用 action实现。
+
+![](pic_linux/action案例-173546288391913.gif)
+
+___
+
+**另请参考:**
+
+-   [http://wiki.ros.org/actionlib](http://wiki.ros.org/actionlib)
+-   [http://wiki.ros.org/actionlib\_tutorials/Tutorials](http://wiki.ros.org/actionlib_tutorials/Tutorials)
+
+#### 10.1.1 自定义action文件
+
+action、srv、msg 文件内的可用数据类型一致，且三者实现流程类似:
+
+1.  按照固定格式创建action文件；
+    
+2.  编辑配置文件；
+    
+3.  编译生成中间文件。
+    
+
+1.定义action文件
+
+首先新建功能包，并导入依赖: `roscpp rospy std_msgs actionlib actionlib_msgs`；
+
+然后功能包下新建 action 目录，新增 Xxx.action(比如:AddInts.action)。
+
+action 文件内容组成分为三部分:请求目标值、最终响应结果、连续反馈，三者之间使用`---`分割示例内容如下:
+
+```
+#目标值
+int32 num
+---
+#最终结果
+int32 result
+---
+#连续反馈
+float64 progress_bar
+```
+
+2.编辑配置文件
+
+**CMakeLists.txt**
+
+```shell
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  rospy
+  std_msgs
+  actionlib
+  actionlib_msgs
+)
+```
+
+```
+add_action_files(
+  FILES
+  AddInts.action
+)
+```
+
+```
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  actionlib_msgs
+)
+```
+
+```
+catkin_package(
+
+#  INCLUDE_DIRS include
+#  LIBRARIES demo04_action
+
+ CATKIN_DEPENDS roscpp rospy std_msgs actionlib actionlib_msgs
+
+#  DEPENDS system_lib
+
+)
+```
+
+3.编译
+
+编译后会生成一些中间文件。
+
+msg文件(.../工作空间/devel/share/包名/msg/xxx.msg):
+
+![](pic_linux/action_相关msg.PNG)
+
+C++ 调用的文件(.../工作空间/devel/include/包名/xxx.h):
+
+![](pic_linux/action_C++头文件.PNG)
+
+Python 调用的文件(.../工作空间/devel/lib/python3/dist-packages/包名/msg/xxx.py):
+
+![](pic_linux/action_Python文件.PNG)
+
+___
+
+#### 10.1.2 action通信(C++)
+
+vscode配置
+
+c_cpp_properies.json 
+
+```c
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "",
+                "limitSymbolsToIncludedHeaders": true
+            },
+            "includePath": [
+                "/opt/ros/noetic/include/**",
+                "/usr/include/**",
+                "/xxx/yyy工作空间/devel/include/**" //配置 head 文件的路径 
+            ],
+            "name": "ROS",
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}
+```
+
+/home/book/ws/src/demo01_action/src/action01_server.cpp
+
+服务端
+
+```cpp
+#include "ros/ros.h"
+#include "actionlib/server/simple_action_server.h"
+#include "demo01_action/AddIntsAction.h"
+/*  
+    需求:
+        创建两个ROS节点，服务器和客户端，
+        客户端可以向服务器发送目标数据N（一个整型数据）
+        服务器会计算1到N之间所有整数的和，这是一个循环累加的过程，返回给客户端，
+        这是基于请求响应模式的，
+        又已知服务器从接收到请求到产生响应是一个耗时操作，每累加一次耗时0.1s，
+        为了良好的用户体验，需要服务器在计算过程中，
+        每累加一次，就给客户端响应一次百分比格式的执行进度，使用action实现。
+
+    流程:
+        1.包含头文件;
+        2.初始化ROS节点;
+        3.创建NodeHandle;
+        4.创建action服务对象;
+        5.处理请求,产生反馈与响应;
+        6.spin().
+*/
+
+typedef actionlib::SimpleActionServer<demo01_action::AddIntsAction> Server;
+
+ // 5.处理请求（1.解析提交的目标值；2.产生连续反馈；3.最终结果响应） ---回调函数
+ // goal被用来获取客户端提交的目标值num，而server指针被用来发布进度反馈和最终结果
+void cb(const demo01_action::AddIntsGoalConstPtr &goal,Server* server){
+    //获取目标值
+    int num = goal->num;
+    ROS_INFO("客户端提交的目标值是:%d",num);
+    //累加并响应连续反馈
+    int result = 0;
+    demo01_action::AddIntsFeedback feedback;//连续反馈对象
+    ros::Rate rate(10);//通过频率设置休眠时间，1/10s
+    for (int i = 1; i <= num; i++)
+    {
+        result += i;
+        //组织连续数据并发布
+        feedback.progress_bar = i / (double)num;
+        server->publishFeedback(feedback);
+        rate.sleep();
+    }
+    //设置最终结果
+    demo01_action::AddIntsResult r;
+    r.result = result;
+    server->setSucceeded(r);
+    ROS_INFO("最终结果:%d",r.result);
+}
+
+int main(int argc, char *argv[])
+{
+    setlocale(LC_ALL,"");
+    ROS_INFO("action服务端实现");
+    // 2.初始化ROS节点;
+    ros::init(argc,argv,"AddInts_server");
+    // 3.创建NodeHandle;
+    ros::NodeHandle nh;
+    // 4.创建action服务对象;
+    /*SimpleActionServer(ros::NodeHandle n, //函数句柄
+            std::string name,               //话题名称
+            //回调函数，传入参数类型，产生不断的反馈
+            boost::function<void (const demo01_action::AddIntsGoalConstPtr &)> execute_callback, 
+            bool auto_start)                //自动启动选项
+    */
+    // actionlib::SimpleActionServer<demo01_action::AddIntsAction> server(....);
+    //创建server对象，参数：函数句柄，绑定回调函数，是否自动启动服务
+    /*绑定函数定义：
+    &cb是回调函数的地址。
+    _1是一个特殊的占位符，表示将动作目标（AddIntsGoalConstPtr）作为第一个参数传递给回调函数cb。
+    &server是动作服务器对象的地址，作为第二个参数传递给回调函数cb。
+    */
+    Server server(nh,"addInts",boost::bind(&cb,_1,&server),false);
+    server.start();//如果auto start为false，那么需要手动调用改函数，启动服务
+    // 5.处理请求（1.解析提交的目标值；2.产生连续反馈；3.最终结果响应） ---回调函数
+
+    // 6.spin().   
+    ros::spin();
+    return 0;
+}
+```
+
+cmakelists
+
+```cmake
+add_executable(action01_server src/action01_server.cpp)
+add_dependencies(action01_server ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(action01_server
+  ${catkin_LIBRARIES}
+)
+```
+
+测试
+
+ctrl shift b 编译
+
+```shell
+roscore #启动核心
+```
+
+```shell
+book@100ask:~$ cd ws
+book@100ask:~/ws$ rostopic list
+/rosout
+/rosout_agg
+book@100ask:~/ws$ rosrun demo01_action action01_server 		#启动节点
+[ INFO] [1736326839.816320782]: action服务端实现
+[ INFO] [1736327064.044483944]: 客户端提交的目标值是:100
+[ INFO] [1736327074.047752074]: 最终结果:5050
+```
+
+```shell
+book@100ask:~/ws$ rostopic list	
+/addInts/cancel
+/addInts/feedback			#反馈
+/addInts/goal					#目标值
+/addInts/result					#结果
+/addInts/status					#状态
+/rosout
+/rosout_agg
+```
+
+```shell
+book@100ask:~$ rostopic pub /addInts/goal demo01_action/AddIntsActionGoal "header:
+  seq: 0
+  stamp:
+    secs: 0
+    nsecs: 0
+  frame_id: ''
+goal_id:
+  stamp:
+    secs: 0
+    nsecs: 0
+  id: ''
+goal:
+  num: 100" 		#服务端发送目标值
+publishing and latching message. Press ctrl-C to terminate
+```
+
+```
+rostopic  echo  /addInts/feedback	
+```
+
+```
+rostopic echo   /addInts/result
+```
+
+```
+rostopic echo  /addInts/status
+```
+
+客户端
+
+/home/book/ws/src/demo01_action/src/action02_client.cpp
+
+```cpp
+#include "ros/ros.h"
+#include "actionlib/client/simple_action_client.h"
+#include "demo01_action/AddIntsAction.h"
+
+/*  
+    需求:
+        创建两个ROS节点，服务器和客户端，
+        客户端可以向服务器发送目标数据N（一个整型数据）
+        服务器会计算1到N之间所有整数的和，这是一个循环累加的过程，返回给客户端，
+        这是基于请求响应模式的，
+        又已知服务器从接收到请求到产生响应是一个耗时操作，每累加一次耗时0.1s，
+        为了良好的用户体验，需要服务器在计算过程中，
+        每累加一次，就给客户端响应一次百分比格式的执行进度，使用action实现。
+
+    流程:
+        1.包含头文件;
+        2.初始化ROS节点;
+        3.创建NodeHandle;
+        4.创建action客户端对象;
+        5.发送请求;
+            a.链接建立--------回调函数
+            b.处理连续反馈-----回调函数
+            c.处理最终响应-----回调函数
+        6.spin().
+
+*/
+typedef actionlib::SimpleActionClient<demo01_action::AddIntsAction> Client;
+
+
+//处理最终结果
+void done_cb(const actionlib::SimpleClientGoalState &state, const demo01_action::AddIntsResultConstPtr &result){
+    if (state.state_ == state.SUCCEEDED)
+    {
+        ROS_INFO("最终结果:%d",result->result);
+    } else {
+        ROS_INFO("任务失败！");
+    }
+
+}
+//服务已经激活
+void active_cb(){
+    ROS_INFO("服务已经被激活....");
+}
+//处理连续反馈
+void feedback_cb(const demo01_action::AddIntsFeedbackConstPtr &feedback){
+    ROS_INFO("当前进度:%.2f",feedback->progress_bar);
+}
+
+int main(int argc, char *argv[])
+{
+    setlocale(LC_ALL,"");//防止中文乱码
+    // 2.初始化ROS节点;
+    ros::init(argc,argv,"AddInts_client");
+    // 3.创建NodeHandle;
+    ros::NodeHandle nh;
+    // 4.创建action客户端对象;
+    // SimpleActionClient(ros::NodeHandle & n, const std::string & name, bool spin_thread = true)
+    // actionlib::SimpleActionClient<demo01_action::AddIntsAction> client(nh,"addInts");
+    Client client(nh,"addInts",true);
+    //等待服务启动
+    ROS_INFO("等待服务器启动....");
+    client.waitForServer();
+    // 5.发送目标，处理反馈以及最终结果;
+    /*  
+        void sendGoal(const demo01_action::AddIntsGoal &goal, 
+            boost::function<void (const actionlib::SimpleClientGoalState &state, const demo01_action::AddIntsResultConstPtr &result)> done_cb, 
+            boost::function<void ()> active_cb, 
+            boost::function<void (const demo01_action::AddIntsFeedbackConstPtr &feedback)> feedback_cb)
+    */
+    demo01_action::AddIntsGoal goal;//实例化目标对象
+    goal.num = 100;//目标值
+    //客户端发送目标数据，参数：目标值，完成回调函数，处理回调函数，反馈回调函数
+    client.sendGoal(goal,&done_cb,&active_cb,&feedback_cb);
+    // 6.spin().
+    ros::spin();
+    return 0;
+}
+```
+
+cmakelists
+
+```cmake
+add_executable(action01_server src/action01_server.cpp)
+add_executable(action02_client src/action02_client.cpp)
+
+add_dependencies(action01_server ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(action02_client ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+target_link_libraries(action01_server
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(action02_client
+  ${catkin_LIBRARIES}
+)
+```
+
+测试
+
+```
+rosrun demo01_action action01_server 
+```
+
+```
+rosrun demo01_action action02_client 
+```
+
+#### 10.1.3 action通信(Py)
+
+服务端
+
+/home/book/ws/src/demo01_action/scripts/action01_server_p.py
+
+```python
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+import rospy
+import actionlib
+from demo01_action.msg import *
+"""
+    需求:
+        创建两个ROS 节点，服务器和客户端，
+        客户端可以向服务器发送目标数据N(一个整型数据)服务器会计算 1 到 N 之间所有整数的和,
+        这是一个循环累加的过程，返回给客户端，这是基于请求响应模式的，
+        又已知服务器从接收到请求到产生响应是一个耗时操作，每累加一次耗时0.1s，
+        为了良好的用户体验，需要服务器在计算过程中，
+        每累加一次，就给客户端响应一次百分比格式的执行进度，使用 action实现。
+    流程:
+        1.导包
+        2.初始化 ROS 节点
+        3.使用类封装，然后创建对象
+        4.创建服务器对象
+        5.处理请求数据产生响应结果，中间还要连续反馈
+            1.解析目标值
+            2.发送连续反馈
+            3.响应最终结果
+        6.spin
+"""
+
+"""
+在Python中，self是一个特殊的参数，它用于引用类的实例对象。
+当您定义一个类的方法时，第一个参数通常是self，它代表当前实例对象。
+通过self，您可以在类的内部访问和修改实例属性和方法。
+在您提供的代码中，MyActionServer类有两个方法：__init__和cb。
+在这两个方法中，self用于引用MyActionServer的实例。
+"""
+class MyActionServer:
+    def __init__(self):
+        #SimpleActionServer(name, ActionSpec, execute_cb=None, auto_start=True)
+        self.server = actionlib.SimpleActionServer("addInts",AddIntsAction,self.cb,False)
+        self.server.start()
+        rospy.loginfo("服务端启动")
+
+
+    def cb(self,goal):
+        rospy.loginfo("服务端处理请求:")
+        #1.解析目标值
+        num = goal.num
+        #2.循环累加，连续反馈
+        rate = rospy.Rate(10)
+        sum = 0
+        for i in range(1,num + 1):
+            # 累加
+            sum = sum + i
+            # 计算进度并连续反馈
+            feedBack = i / num
+            rospy.loginfo("当前进度:%.2f",feedBack)
+
+            #创建发布对象
+            feedBack_obj = AddIntsFeedback()
+            feedBack_obj.progress_bar = feedBack
+            # 发送连续反馈
+            self.server.publish_feedback(feedBack_obj)
+            rate.sleep()
+        #3.响应最终结果
+        result = AddIntsResult()
+        result.result = sum        
+        self.server.set_succeeded(result)
+        rospy.loginfo("响应结果:%d",sum)
+if __name__ == "__main__":
+    rospy.init_node("action_server_p")
+    server = MyActionServer()
+    rospy.spin()
+```
+
+客户端
+
+/home/book/ws/src/demo01_action/scripts/action02_client_p.py
+
+```python
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import rospy
+import actionlib
+from demo01_action.msg import *
+
+"""
+    需求:
+        创建两个ROS 节点，服务器和客户端，
+        客户端可以向服务器发送目标数据N(一个整型数据)服务器会计算 1 到 N 之间所有整数的和,
+        这是一个循环累加的过程，返回给客户端，这是基于请求响应模式的，
+        又已知服务器从接收到请求到产生响应是一个耗时操作，每累加一次耗时0.1s，
+        为了良好的用户体验，需要服务器在计算过程中，
+        每累加一次，就给客户端响应一次百分比格式的执行进度，使用 action实现。
+    流程:
+        1.导包
+        2.初始化 ROS 节点
+        3.创建 action Client 对象
+        4.等待服务
+        5.组织目标对象并发送
+        6.编写回调, 激活、连续反馈、最终响应
+        7.spin
+"""
+
+def done_cb(state,result):
+    if state == actionlib.GoalStatus.SUCCEEDED:
+        rospy.loginfo("响应结果:%d",result.result)
+    else :
+        rospy.loginfo("响应失败")
+
+def active_cb():
+    rospy.loginfo("服务被激活....")
+
+
+def fb_cb(fb):
+    rospy.loginfo("当前进度:%.2f",fb.progress_bar)
+
+if __name__ == "__main__":
+    # 2.初始化 ROS 节点
+    rospy.init_node("action_client_p")
+    # 3.创建 action Client 对象
+    client = actionlib.SimpleActionClient("addInts",AddIntsAction)
+    # 4.等待服务
+    client.wait_for_server()
+    # 5.组织目标对象并发送
+    goal_obj = AddIntsGoal()
+    goal_obj.num = 10
+    client.send_goal(goal_obj,done_cb,active_cb,fb_cb)
+    # client.send_goal()参数：目标值，最终结果反馈，连接被激活的反馈
+    # 6.编写回调, 激活、连续反馈、最终响应
+    # 7.spin
+    rospy.spin()
+```
+
+先为 Python 文件添加可执行权限:`chmod +x *.py`
+
+修改cmakelists
+
+```cmake
+catkin_install_python(PROGRAMS
+  scripts/action01_server_p.py
+  scripts/action02_client_p.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+```
+
+测试
+
+```
+rosrun demo01_action action01_server_p.py 
+```
+
+```
+rosrun demo01_action action02_client_p.py
+```
+
+### 10.2 动态参数
+
+#### 10.2.0 举例测试
+
+```shell
+roslaunch urdf02_gazebo demo03_env.launch 
+#启动gazebo仿真环境
+```
+
+```shell
+roslaunch nav_demo nav06_test.launch 
+#启动导航代码
+```
+
+```shell
+rqt
+#plugins ->configuration->dynamic reconfigure
+```
+
+参数服务器的数据被修改时，如果节点不重新访问，那么就不能获取修改后的数据，例如在乌龟背景色修改的案例中，先启动乌龟显示节点，然后再修改参数服务器中关于背景色设置的参数，那么窗体的背景色是不会修改的，必须要重启乌龟显示节点才能生效。而一些特殊场景下，是要求要能做到动态获取的，也即，参数一旦修改，能够通知节点参数已经修改并读取修改后的数据，比如：
+
+> 机器人调试时，需要修改机器人轮廓信息(长宽高)、传感器位姿信息....，如果这些信息存储在参数服务器中，那么意味着需要重启节点，才能使更新设置生效，但是希望修改完毕之后，某些节点能够即时更新这些参数信息。
+
+在ROS中针对这种场景已经给出的解决方案: dynamic reconfigure 动态配置参数。
+
+动态配置参数，之所以能够实现即时更新，因为被设计成 CS 架构，客户端修改参数就是向服务器发送请求，服务器接收到请求之后，读取修改后的是参数。
+
+___
+
+**概念**
+
+一种可以在运行时更新参数而无需重启节点的参数配置策略。
+
+**作用**
+
+主要应用于需要动态更新参数的场景，比如参数调试、功能切换等。典型应用:导航时参数的动态调试。
+
+**案例**
+
+编写两个节点，一个节点可以动态修改参数，另一个节点时时解析修改后的数据。![](pic_linux/动态参数案例.gif)
+
+#### 10.2.1 客户端
+
+**需求:**
+
+> 编写两个节点，一个节点可以动态修改参数，另一个节点时时解析修改后的数据。
+
+**客户端实现流程:**
+
+-   新建并编辑 .cfg 文件;
+-   编辑CMakeLists.txt;
+-   编译。
+
+___
+
+1.新建功能包
+
+新建功能包，添加依赖:`roscpp rospy std_msgs dynamic_reconfigure`。
+
+2.添加.cfg文件
+
+新建 cfg 文件夹，添加 xxx.cfg 文件(并添加可执行权限)，cfg 文件其实就是一个 python 文件,用于生成参数修改的客户端(GUI)。
+
+/home/book/ws/src/demo02_dr/cfg/dr.cfg
+
+```python
+#! /usr/bin/env python
+#-*- coding: utf-8 -*-
+"""
+ 4生成动态参数 int,double,bool,string,列表
+ 5实现流程:
+ 6    1.导包
+ 7    2.创建生成器
+ 8    3.向生成器添加若干参数
+ 9    4.生成中间文件并退出
+10
+"""
+# 1.导包
+from dynamic_reconfigure.parameter_generator_catkin import *
+PACKAGE = "demo02_dr"
+# 2.创建生成器
+gen = ParameterGenerator()
+
+# 3.向生成器添加若干参数
+#add(name, paramtype, level, description, default=None, min=None, max=None, edit_method="")
+#参数：变量名，参数类型，掩码（表示传参过程中，参数是否被修改），描述，默认值，最小值，最大值，下拉列表名称）
+gen.add("int_param",int_t,0,"整型参数",50,0,100)
+gen.add("double_param",double_t,0,"浮点参数",1.57,0,3.14)
+gen.add("string_param",str_t,0,"字符串参数","hello world ")
+gen.add("bool_param",bool_t,0,"bool参数",True)
+
+many_enum = gen.enum([gen.const("small",int_t,0,"a small size"),
+                gen.const("mediun",int_t,1,"a medium size"),
+                gen.const("big",int_t,2,"a big size")
+                ],"a car size set")
+
+gen.add("list_param",int_t,0,"列表参数",0,0,2, edit_method=many_enum)
+
+# 4.生成中间文件并退出
+#generate(pkgname, nodename, name)
+exit(gen.generate(PACKAGE,"dr_node","dr"))
+```
+
+`chmod +x xxx.cfg`添加权限
+
+3.配置 CMakeLists.txt
+
+```
+generate_dynamic_reconfigure_options(
+  cfg/mycar.cfg
+)
+```
+
+4.编译
+
+编译后会生成中间文件
+
+C++ 需要调用的头文件:
+
+![](pic_linux/动态参数C++头文件-173677798213823.PNG)
+
+Python需要调用的文件:
+
+![](pic_linux/动态参数Python文件-173677798213824.PNG)
+
+___
+
+#### 10.2.2 服务端(C++)
+
+**需求:**
+
+> 编写两个节点，一个节点可以动态修改参数，另一个节点时时解析修改后的数据。
+
+**服务端实现流程:**
+
+-   新建并编辑 c++ 文件;
+-   编辑CMakeLists.txt;
+-   编译并执行。
+
+___
+
+0.vscode配置
+
+需要像之前自定义 msg 实现一样配置settings.json 文件，如果以前已经配置且没有变更工作空间，可以忽略，如果需要配置，配置方式与之前相同:
+
+```json
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "",
+                "limitSymbolsToIncludedHeaders": true
+            },
+            "includePath": [
+                "/opt/ros/noetic/include/**",
+                "/usr/include/**",
+                "/xxx/yyy工作空间/devel/include/**" //配置 head 文件的路径 
+            ],
+            "name": "ROS",
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}
+```
+
+1.服务器代码实现
+
+新建cpp文件，内容如下:
+
+/home/book/ws/src/demo02_dr/src/dr01_server.cpp
+
+```cpp
+#include "ros/ros.h"
+#include "dynamic_reconfigure/server.h"
+#include "demo02_dr/drConfig.h"
+ /*  
+    动态参数服务端: 参数被修改时直接打印
+    实现流程:
+        1.包含头文件
+        2.初始化 ros 节点
+        3.创建服务器对象
+        4.创建回调对象(使用回调函数，打印修改后的参数)
+        5.服务器对象调用回调对象
+        6.spin()
+*/
+
+void cb(demo02_dr::drConfig& config, uint32_t level){
+    ROS_INFO("动态参数解析数据:%d,%.2f,%d,%s,%d",
+        config.int_param,
+        config.double_param,
+        config.bool_param,
+        config.string_param.c_str(),
+        config.list_param
+    );
+}
+
+int main(int argc, char *argv[])
+{
+    setlocale(LC_ALL,"");
+    // 2.初始化 ros 节点
+    ros::init(argc,argv,"dr");
+    // 3.创建服务器对象
+    dynamic_reconfigure::Server<demo02_dr::drConfig> server;
+    // 4.创建回调对象(使用回调函数，打印修改后的参数)
+    //setCallback(const boost::function<void (demo02_dr::drConfig &, uint32_t level)> &callback)
+    dynamic_reconfigure::Server<demo02_dr::drConfig>::CallbackType cbType;
+    cbType = boost::bind(&cb,_1,_2);
+    // 5.服务器对象调用回调对象
+    server.setCallback(cbType);
+    // 6.spin()
+    ros::spin();
+    return 0;
+}
+```
+
+2.编译配置文件
+
+```cmake
+add_executable(demo01_dr_server src/demo01_dr_server.cpp)
+...
+
+add_dependencies(demo01_dr_server ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+...
+
+target_link_libraries(demo01_dr_server
+  ${catkin_LIBRARIES}
+)
+```
+
+3.执行
+
+先启动`roscore`
+
+启动服务端:`rosrun 功能包 xxxx`
+
+```shell
+rosrun demo02_dr dr01_server
+```
+
+启动客户端: rqt
+
+最终可以通过客户端提供的界面修改数据，并且修改完毕后，服务端会即时输出修改后的结果，最终运行结果与示例类似。
+
+**PS:**ROS版本较新时，可能没有提供客户端相关的功能包导致`rosrun rqt_reconfigure rqt_reconfigure`调用会抛出异常。
+
+
+
+#### 10.2.3 服务端(Py)
+
+**需求:**
+
+> 编写两个节点，一个节点可以动态修改参数，另一个节点时时解析修改后的数据。
+
+**服务端实现流程:**
+
+-   新建并编辑 Python 文件;
+-   编辑CMakeLists.txt;
+-   编译并执行。
+
+___
+
+0.vscode配置
+
+需要像之前自定义 msg 实现一样配置settings.json 文件，如果以前已经配置且没有变更工作空间，可以忽略，如果需要配置，配置方式与之前相同:
+
+```shell
+{
+    "python.autoComplete.extraPaths": [
+        "/opt/ros/noetic/lib/python3/dist-packages",
+        "/xxx/yyy工作空间/devel/lib/python3/dist-packages"
+    ]
+}
+```
+
+1.服务器代码实现
+
+新建python文件，内容如下:
+
+/home/book/ws/src/demo02_dr/scripts/dr01_server_p.py
+
+```python
+#! /usr/bin/env python
+#-*- coding: utf-8 -*-
+import rospy
+from dynamic_reconfigure.server import Server
+from demo02_dr.cfg import drConfig
+
+"""
+    动态参数服务端: 参数被修改时直接打印
+    实现流程:
+        1.导包
+        2.初始化 ros 节点
+        3.创建服务对象
+        4.回调函数处理
+        5.spin
+"""
+# 回调函数
+def cb(config,level):
+    rospy.loginfo("python 动态参数服务解析:%d,%.2f,%d,%s,%d",
+            config.int_param,
+            config.double_param,
+            config.bool_param,
+            config.string_param,
+            config.list_param
+    )
+    return config
+
+if __name__ == "__main__":
+    # 2.初始化 ros 节点
+    rospy.init_node("dr_p")
+    # 3.创建服务对象
+    server = Server(drConfig,cb)
+    # 4.回调函数处理
+    # 5.spin
+    rospy.spin()
+```
+
+2.编辑配置文件
+
+先为 Python 文件添加可执行权限:`chmod +x *.py`
+
+```cmake
+catkin_install_python(PROGRAMS
+  scripts/demo01_dr_server_p.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+```
+
+3.执行
+
+先启动`roscore`
+
+启动服务端:`rosrun 功能包 xxxx.py`
+
+启动客户端:`rosrun rqt_gui rqt_gui -s rqt_reconfigure`或`rosrun rqt_reconfigure rqt_reconfigure`
+
+最终可以通过客户端提供的界面修改数据，并且修改完毕后，服务端会即时输出修改后的结果，最终运行结果与示例类似。
+
+**PS:**ROS版本较新时，可能没有提供客户端相关的功能包导致`rosrun rqt_reconfigure rqt_reconfigure`调用会抛出异常。
+
+___
+
+### 10.3 pluginlib
+
+**pluginlib**直译是插件库，所谓插件字面意思就是可插拔的组件，比如:以计算机为例，可以通过USB接口自由插拔的键盘、鼠标、U盘...都可以看作是插件实现，其基本原理就是通过规范化的USB接口协议实现计算机与USB设备的自由组合。同理，在软件编程中，插件是一种遵循一定规范的应用程序接口编写出来的程序，插件程序依赖于某个应用程序，且应用程序可以与不同的插件程序自由组合。在ROS中，也会经常使用到插件，场景如下:
+
+> 1.导航插件:在导航中，涉及到路径规划模块，路径规划算法有多种，也可以自实现，导航应用时，可能需要测试不同算法的优劣以选择更合适的实现，这种场景下，ROS中就是通过插件的方式来实现不同算法的灵活切换的。
+>
+> 2.rviz插件:在rviz中已经提供了丰富的功能实现，但是即便如此，特定场景下，开发者可能需要实现某些定制化功能并集成到rviz中，这一集成过程也是基于插件的。
+
+___
+
+**概念**
+
+**pluginlib**是一个c++库， 用来从一个ROS功能包中加载和卸载插件(plugin)。插件是指从运行时库中动态加载的类。通过使用Pluginlib，不必将某个应用程序显式地链接到包含某个类的库，Pluginlib可以随时打开包含类的库，而不需要应用程序事先知道包含类定义的库或者头文件。
+
+**作用**
+
+-   结构清晰；
+    
+-   低耦合，易修改，可维护性强；
+    
+-   可移植性强，更具复用性；
+    
+-   结构容易调整，插件可以自由增减；
+    
+
+___
+
+**另请参考:**
+
+-   [http://wiki.ros.org/pluginlib](http://wiki.ros.org/pluginlib)
+    
+-   [http://wiki.ros.org/pluginlib/Tutorials/Writing%20and%20Using%20a%20Simple%20Plugin](http://wiki.ros.org/pluginlib/Tutorials/Writing%20and%20Using%20a%20Simple%20Plugin)
+
+**需求:**
+
+以插件的方式实现正多边形的相关计算。
+
+**实现流程:**
+
+1.  准备；
+    
+2.  创建基类；
+    
+3.  创建插件类；
+    
+4.  注册插件;
+    
+5.  构建插件库;
+    
+6.  使插件可用于ROS工具链;
+    
+    -   配置xml
+        
+    -   导出插件
+    
+7.  使用插件;
+    
+8.  执行。
+    
+
+___
+
+##### 1.准备
+
+创建功能包xxx导入依赖: roscpp pluginlib。
+
+在 VSCode中需要配置 .vascode/c\_cpp\_properties.json文件中关于 includepath 选项的设置。
+
+```json
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "",
+                "limitSymbolsToIncludedHeaders": true
+            },
+            "includePath": [
+                "/opt/ros/noetic/include/**",
+                "/usr/include/**",
+                "/.../yyy工作空间/功能包/include/**" //配置 head 文件的路径 
+            ],
+            "name": "ROS",
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}
+```
+
+##### 2.创建基类
+
+在 xxx/include/xxx下新建C++头文件: polygon\_base.h，所有的插件类都需要继承此基类，内容如下:
+
+/home/book/ws/src/demo03_plugin/include/demo03_plugin/dbx_base.h
+
+```cpp
+#ifndef DBX_BASE_H_
+#define DBX_BASE_H_
+
+namespace dbx_base_ns
+{
+    /*
+        注意：必须保证基类中包含无参构造
+    */
+  class Dbx_Base
+  {
+    protected:
+      Dbx_Base(){}
+
+    public:
+      //计算周长的函数
+      virtual double getlength() = 0;
+      //初始化边长的函数
+      virtual void initialize(double side_length) = 0;
+      //析构函数
+      virtual ~Dbx_Base(){}
+  };
+};
+#endif
+```
+
+**PS:**基类必须提供无参构造函数，所以关于多边形的边长没有通过构造函数而是通过单独编写的initialize函数传参。
+
+##### 3.创建插件
+
+在 xxx/include/xxx下新建C++头文件:polygon\_plugins.h，内容如下:
+
+/home/book/ws/src/demo03_plugin/include/demo03_plugin/dbx_plugins.h
+
+```cpp
+#ifndef DBX_PLUGINS_H_
+#define DBX_PLUGINS_H_
+#include "demo03_plugin/dbx_base.h"
+namespace dbx_plugins_ns{
+    //三边
+    class SanBian: public dbx_base_ns::Dbx_Base{
+        private:
+        //私有成员变量
+            double side_length;
+        public:
+            //构造函数
+            SanBian(){
+                side_length = 0.0;
+            }
+            void initialize(double side_length){
+                this->side_length = side_length;
+            }
+            double getlength(){
+                return side_length * 3;
+            }
+    };
+    //四边
+    class SiBian: public dbx_base_ns::Dbx_Base{
+        private:
+        //私有成员变量
+            double side_length;
+        public:
+            //构造函数
+            SiBian(){
+                side_length = 0.0;
+            }
+            void initialize(double side_length){
+                this->side_length = side_length;
+            }
+            double getlength(){
+                return side_length * 4;
+            }
+    };
+};
+#endif
+```
+
+该文件中创建了正方形与三角形两个衍生类继承基类。
+
+##### 4.注册插件
+
+在 src 目录下新建 polygon\_plugins.cpp 文件，内容如下:
+
+/home/book/ws/src/demo03_plugin/src/plus.cpp
+
+```cpp
+#include "pluginlib/class_list_macros.h"
+#include "demo03_plugin/dbx_base.h"
+#include "demo03_plugin/dbx_plugins.h"
+
+//外部导入拓展插件类,参数：子类，父类
+PLUGINLIB_EXPORT_CLASS(dbx_plugins_ns::SanBian,dbx_base_ns::Dbx_Base)
+PLUGINLIB_EXPORT_CLASS(dbx_plugins_ns::SiBian,dbx_base_ns::Dbx_Base)
+```
+
+该文件会将两个衍生类注册为插件。
+
+##### 5.构建插件库
+
+在 CMakeLists.txt 文件中设置内容如下:
+
+```cmake
+## Specify additional locations of header files
+## Your package locations should be listed before other locations
+include_directories(
+include
+  ${catkin_INCLUDE_DIRS}
+)
+
+## Declare a C++ library
+add_library(plus
+  src/plus.cpp
+)
+```
+
+至此，可以调用 catkin\_make 编译，编译完成后，在工作空间/devel/lib目录下，会生成相关的 .so 文件。
+
+##### 6.使插件可用于ROS工具链
+
+6.1配置xml
+
+功能包下新建文件:polygon\_plugins.xml,内容如下:
+
+/home/book/ws/src/demo03_plugin/plus.xml
+
+```xml
+<!-- 
+    需要定位动态链接库
+        /home/book/ws/devel/lib/libplus.so
+        library 根标签下的path属性
+    声明子类与父类
+        library 的子标签 class 声明
+ -->
+<!-- 插件库的相对路径 -->
+<library path="lib/libplus">
+  <!-- type="插件类" base_class_type="基类" -->
+  <class type="dbx_plugins_ns::SanBian" base_class_type="dbx_base_ns::Dbx_Base">
+    <!-- 描述信息 -->
+    <description>正三边形插件</description>
+  </class>
+  <class type="dbx_plugins_ns::SiBian" base_class_type="dbx_base_ns::Dbx_Base">
+    <!-- 描述信息 -->
+    <description>正四边形插件</description>
+  </class>
+</library>
+```
+
+6.2导出插件
+
+package.xml文件中设置内容如下:
+
+```xml
+  <!-- The export tag contains other, unspecified, tags -->
+  <export>
+    <!-- Other tools can request additional information be placed here -->
+    <!-- ${prefix} 表示自动寻找功能包 -->
+    <demo03_plugin plugin = "${prefix}/plus.xml" />
+  </export>
+```
+
+标签<xxx />的名称应与基类所属的功能包名称一致，plugin属性值为上一步中创建的xml文件。
+
+编译后，可以调用`rospack plugins --attrib=plugin xxx`命令查看配置是否正常，如无异常，会返回 .xml 文件的完整路径，这意味着插件已经正确的
+
+集成到了ROS工具链。
+
+##### 7.使用插件
+
+src 下新建c++文件:polygon\_loader.cpp，内容如下:
+
+/home/book/ws/src/demo03_plugin/src/use_plus.cpp
+
+```cpp
+//类加载器相关的头文件
+#include "ros/ros.h"
+#include "pluginlib/class_loader.h"
+#include "demo03_plugin/dbx_base.h"
+/*
+    创建类加载器，根据需求加载相关插件
+        1.创建类加载器
+        2.使用类加载器实例化某个插件对象
+        3.使用插件
+*/
+int main(int argc, char** argv)
+{
+    setlocale(LC_ALL,"");
+  //1.创建类加载器 -- 参数1:基类功能包名称 参数2:基类全限定名称
+  pluginlib::ClassLoader<dbx_base_ns::Dbx_Base> loader("demo03_plugin", "dbx_base_ns::Dbx_Base");
+
+  try
+  {
+    //三角形周长
+    //创建插件类实例 -- 参数:插件类全限定名称
+    boost::shared_ptr<dbx_base_ns::Dbx_Base> san = loader.createInstance("dbx_plugins_ns::SanBian");
+    //使用插件
+    san->initialize(10);
+    double length = san->getlength();
+    ROS_INFO("三角形周长: %.2f", length);
+
+    //四角形周长
+    //创建插件类实例 -- 参数:插件类全限定名称
+    boost::shared_ptr<dbx_base_ns::Dbx_Base> si = loader.createInstance("dbx_plugins_ns::SiBian");
+    //使用插件
+    si->initialize(10);
+    double length2 = si->getlength();
+    ROS_INFO("四边形周长: %.2f", length2);
+  }
+  catch(pluginlib::PluginlibException& ex)
+  {
+    ROS_ERROR("The plugin failed to load for some reason. Error: %s", ex.what());
+  }
+  return 0;
+}
+```
+
+##### 8.执行
+
+修改CMakeLists.txt文件，内容如下:
+
+```cmake
+add_executable(use_plus src/use_plus.cpp)
+add_dependencies(use_plus ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(use_plus
+  ${catkin_LIBRARIES}
+)
+```
+
+编译然后执行:polygon\_loader，结果如下:
+
+```shell
+book@100ask:~/ws$ rosrun demo03_plugin use_plus 
+[ INFO] [1736830990.742236624]: 三角形周长: 30.00
+[ INFO] [1736830990.742361624]: 四边形周长: 40.00
+```
+
+___
+
+### 10.4 nodelet
+
+ROS通信是基于Node(节点)的，Node使用方便、易于扩展，可以满足ROS中大多数应用场景，但是也存在一些局限性，由于一个Node启动之后独占一根进程，不同Node之间数据交互其实是不同进程之间的数据交互，当传输类似于图片、点云的大容量数据时，会出现延时与阻塞的情况，比如：
+
+> 现在需要编写一个相机驱动，在该驱动中有两个节点实现:其中节点A负责发布原始图像数据，节点B订阅原始图像数据并在图像上标注人脸。如果节点A与节点B仍按照之前实现，两个节点分别对应不同的进程，在两个进程之间传递容量可观图像数据，可能就会出现延时的情况，那么该如何优化呢？
+
+ROS中给出的解决方案是:Nodelet，通过Nodelet可以将多个节点集成进一个进程。
+
+___
+
+**概念**
+
+nodelet软件包旨在提供在同一进程中运行多个算法(节点)的方式，不同算法之间通过传递指向数据的指针来代替了数据本身的传输(类似于编程传值与传址的区别)，从而实现零成本的数据拷贝。
+
+nodelet功能包的核心实现也是插件，是对插件的进一步封装:
+
+-   不同算法被封装进插件类，可以像单独的节点一样运行；
+-   在该功能包中提供插件类实现的基类:Nodelet；
+-   并且提供了加载插件类的类加载器:NodeletLoader。
+
+**作用**
+
+应用于大容量数据传输的场景，提高节点间的数据交互效率，避免延时与阻塞。
+
+___
+
+**另请参考:**
+
+-   [http://wiki.ros.org/nodelet/](http://wiki.ros.org/nodelet/)
+    
+-   [http://wiki.ros.org/nodelet/Tutorials/Running%20a%20nodelet](http://wiki.ros.org/nodelet/Tutorials/Running%20a%20nodelet)
+    
+-   [https://github.com/ros/common\_tutorials/tree/noetic-devel/nodelet\_tutorial\_math](https://github.com/ros/common_tutorials/tree/noetic-devel/nodelet_tutorial_math)
+
+```shell
+book@100ask:~$ rosrun nodelet nodelet
+Your usage: 
+/opt/ros/melodic/lib/nodelet/nodelet 
+nodelet usage:
+nodelet load pkg/Type manager [--no-bond]   #将节点加载进管理器
+nodelet standalone pkg/Type   #以独立进程加载某个节点
+nodelet unload name manager   #移除某个管理器中的节点
+nodelet manager              #管理器，管理不同节点
+```
+
+#### 10.4.1 使用演示
+
+在ROS中内置了nodelet案例，我们先以该案例演示nodelet的基本使用语法，基本流程如下:
+
+1.  案例简介；
+2.  nodelet基本使用语法；
+3.  内置案例调用。
+
+1.案例简介
+
+以“ros- \[ROS\_DISTRO\] -desktop-full”命令安装ROS时，nodelet默认被安装，如未安装，请调用如下命令自行安装:
+
+```shell
+sudo apt install ros-<<ROS_DISTRO>>-nodelet-tutorial-math
+```
+
+在该案例中，定义了一个Nodelet插件类:Plus，这个节点可以订阅一个数字，并将订阅到的数字与参数服务器中的 value 参数相加后再发布。
+
+**需求:**再同一线程中启动两个Plus节点A与B，向A发布一个数字，然后经A处理后，再发布并作为B的输入，最后打印B的输出。
+
+2.nodelet 基本使用语法
+
+使用语法如下:
+
+```
+nodelet load pkg/Type manager - Launch a nodelet of type pkg/Type on manager manager
+nodelet standalone pkg/Type   - Launch a nodelet of type pkg/Type in a standalone node
+nodelet unload name manager   - Unload a nodelet a nodelet by name from manager
+nodelet manager               - Launch a nodelet manager node
+```
+
+3.内置案例调用
+
+1.启动roscore
+
+```
+roscore
+```
+
+2.启动manager
+
+```
+rosrun nodelet nodelet manager __name:=mymanager
+```
+
+\_\_name:= 用于设置管理器名称。
+
+3.添加nodelet节点
+
+添加第一个节点:
+
+```
+rosrun nodelet nodelet load nodelet_tutorial_math/Plus mymanager __name:=n1 _value:=100
+```
+
+添加第二个节点:
+
+```
+rosrun nodelet nodelet load nodelet_tutorial_math/Plus mymanager __name:=n2 _value:=-50 /n2/in:=/n1/out
+```
+
+PS: 解释
+
+> rosrun nodelet nodelet load nodelet\_tutorial\_math/Plus mymanager \_\_name:=n1 \_value:=100
+>
+> 1.  rosnode list 查看，nodelet 的节点名称是: /n1；
+> 2.  rostopic list 查看，订阅的话题是: /n1/in，发布的话题是: /n1/out；
+> 3.  rosparam list查看，参数名称是: /n1/value。
+>
+> rosrun nodelet nodelet standalone nodelet\_tutorial\_math/Plus mymanager \_\_name:=n2 \_value:=-50 /n2/in:=/n1/out
+>
+> 1.  第二个nodelet 与第一个同理；
+> 2.  第二个nodelet 订阅的话题由 /n2/in 重映射为 /n1/out。
+
+**优化:**也可以将上述实现集成进launch文件:
+
+```xml
+<launch>
+    <!-- 设置nodelet管理器 -->
+    <node pkg="nodelet" type="nodelet" name="mymanager" args="manager" output="screen" />
+    <!-- 启动节点1，名称为 n1, 参数 /n1/value 为100 -->
+    <node pkg="nodelet" type="nodelet" name="n1" args="load nodelet_tutorial_math/Plus mymanager" output="screen" >
+        <param name="value" value="100" />
+    </node>
+    <!-- 启动节点2，名称为 n2, 参数 /n2/value 为-50 -->
+    <node pkg="nodelet" type="nodelet" name="n2" args="load nodelet_tutorial_math/Plus mymanager" output="screen" >
+        <param name="value" value="-50" />
+        <remap from="/n2/in" to="/n1/out" />
+    </node>
+
+</launch>
+```
+
+4.执行
+
+向节点n1发布消息:
+
+```
+rostopic pub -r 10 /n1/in std_msgs/Float64 "data: 10.0"
+```
+
+打印节点n2发布的消息:
+
+```
+rostopic echo /n2/out
+```
+
+最终输出结果应该是:60。
+
+
+
+#### 10.4.2 实现
+
+nodelet本质也是插件，实现流程与插件实现流程类似，并且更为简单，不需要自定义接口，也不需要使用类加载器加载插件类。
+
+**需求:**参考 nodelet 案例，编写 nodelet 插件类，可以订阅输入数据，设置参数，发布订阅数据与参数相加的结果。
+
+**流程:**
+
+1.  准备；
+    
+2.  创建插件类并注册插件;
+    
+3.  构建插件库;
+    
+4.  使插件可用于ROS工具链；
+    
+5.  执行。
+    
+
+1.准备
+
+新建功能包，导入依赖: roscpp、nodelet；
+
+2.创建插件类并注册插件
+
+/home/book/ws/src/demo04_nodelet/src/myplus.cpp
+
+```cpp
+#include "nodelet/nodelet.h"
+#include "pluginlib/class_list_macros.h"
+#include "ros/ros.h"
+#include "std_msgs/Float64.h"
+/*
+    需求：   首先，需要订阅一个浮点数据
+            然后，将订阅的数据与参数服务器的指定参数相加
+            最后，将最终结果发布
+    流程：
+        1.先确定需要的变量：订阅对象，发布对象，存储参数的变量；
+        2.获取 NodleHandle;
+        3.通过 NodleHandle 创建订阅对象和发布对象，解析参数；
+        4.回调函数处理数据，并通过发布对象发布。
+*/
+namespace nodelet_demo_ns {
+class MyPlus: public nodelet::Nodelet {
+    public:
+    MyPlus(){
+        value = 0.0;
+    }
+    void onInit(){
+        //获取 NodeHandle
+        ros::NodeHandle& nh = getPrivateNodeHandle();
+        //从参数服务器获取参数
+        nh.getParam("value",value);
+        //创建发布与订阅对象
+        pub = nh.advertise<std_msgs::Float64>("out",100);//话题名称： /节点名/out
+        sub = nh.subscribe<std_msgs::Float64>("in",100,&MyPlus::doCb,this);
+
+    }
+    //处理订阅的回调函数
+    void doCb(const std_msgs::Float64::ConstPtr& p){
+        double num = p->data;
+        //数据处理
+        double result = num + value;
+        std_msgs::Float64 r;
+        r.data = result;
+        //发布
+        pub.publish(r);
+    }
+    private:
+    ros::Publisher pub;
+    ros::Subscriber sub;
+    double value;
+
+};
+}
+PLUGINLIB_EXPORT_CLASS(nodelet_demo_ns::MyPlus,nodelet::Nodelet)
+```
+
+3.构建插件库
+
+CMakeLists.txt配置如下：
+
+```cmake
+...
+add_library(myplus
+  src/myplus.cpp
+)
+...
+target_link_libraries(myplus
+  ${catkin_LIBRARIES}
+)
+```
+
+编译后，会在 `工作空间/devel/lib/`先生成文件: libmyplus.so。
+
+4.使插件可用于ROS工具链
+
+4.1配置xml
+
+新建 xml 文件，名称自定义(比如:my\_plus.xml)，内容如下：
+
+/home/book/ws/src/demo04_nodelet/myplus.xml
+
+```xml
+<library path="lib/libmyplus">
+    <class name="demo04_nodelet/MyPlus" type="nodelet_demo_ns::MyPlus" base_class_type="nodelet::Nodelet" >
+        <description>hello</description>
+    </class>
+</library>
+```
+
+4.2导出插件
+
+/home/book/ws/src/demo04_nodelet/package.xml
+
+```xml
+  <!-- The export tag contains other, unspecified, tags -->
+  <export>
+      <!-- Other tools can request additional information be placed here -->
+      <nodelet plugin="${prefix}/myplus.xml" />
+  </export>
+```
+
+5.执行
+
+可以通过launch文件执行nodelet，示例内容如下:
+
+```xml
+<launch>
+    <!-- 设置nodelet管理器 -->
+    <node pkg="nodelet" type="nodelet" name="dasun" args="manager" output="screen" />
+    <!-- 启动节点1，名称为 n1, 参数 /n1/value 为100 -->
+    <node pkg="nodelet" type="nodelet" name="xiaowang" args="load demo04_nodelet/MyPlus dasun" output="screen" >
+        <param name="value" value="100" />
+    </node>
+    <!-- 启动节点2，名称为 n2, 参数 /n2/value 为-50 -->
+    <node pkg="nodelet" type="nodelet" name="ergou" args="load demo04_nodelet/MyPlus dasun" output="screen" >
+        <param name="value" value="-50" />
+        <remap from="/ergou/in" to="/xiaowang/out" />
+    </node>
+
+</launch>
+```
+
+运行launch文件，可以参考上一节方式向 p1发布数据，并订阅p2输出的数据，最终运行结果也与上一节类似。
+
+___
