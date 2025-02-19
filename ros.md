@@ -462,27 +462,107 @@ code .
 
  ctrl + shift + B 调用编译，选择：catkin_make:build 右边的齿轮，添加配置文件
 
+tasks.json
+
 ```json
 {
-// 有关 tasks.json 格式的文档，请参见
-    // https://go.microsoft.com/fwlink/?LinkId=733558
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "catkin_make:debug", //代表提示的描述性信息
-            "type": "shell",  //可以选择shell或者process,如果是shell代码是在shell里面运行一个命令，如果是process代表作为一个进程来运行
-            "command": "catkin_make",//这个是我们需要运行的命令
-            "args": [],//如果需要在命令后面加一些后缀，可以写在这里，比如-DCATKIN_WHITELIST_PACKAGES=“pac1;pac2”
-            "group": {"kind":"build","isDefault":true},
-            "presentation": {
-                "reveal": "always"//可选always或者silence，代表是否输出信息
-            },
-            "problemMatcher": "$msCompile"
-        }
-    ]
+	// 有关 tasks.json 格式的文档，请参见
+		// https://go.microsoft.com/fwlink/?LinkId=733558
+		"version": "2.0.0",
+		"tasks": [
+			{
+				"label": "catkin_make:debug", //代表提示的描述性信息
+				"type": "shell",  //可以选择shell或者process,如果是shell代码是在shell里面运行一个命令，如果是process代表作为一个进程来运行
+				"command": "catkin_make",//这个是我们需要运行的命令
+				"args": [],//如果需要在命令后面加一些后缀，可以写在这里，比如-DCATKIN_WHITELIST_PACKAGES=“pac1;pac2”
+				"group": {"kind":"build","isDefault":true},
+				"presentation": {
+					"reveal": "always"//可选always或者silence，代表是否输出信息
+				},
+				"problemMatcher": "$msCompile"}
+		]
 }
-
+	
 ```
+
+c_cpp_properties.json
+
+```json
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/opt/ros/noetic/include/**",
+        "/usr/include/**",
+        "/home/ubuntu2004/module_ws/src/tf01_static/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu17",
+      "cppStandard": "c++17"
+    }
+  ],
+  "version": 4
+}
+```
+
+settings.json
+
+```json
+{
+    "python.autoComplete.extraPaths": [
+        "/home/ubuntu2004/module_ws/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/ubuntu2004/module_ws/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "cmake.sourceDirectory": "/home/ubuntu2004/module_ws/src/tf01_static",
+}
+```
+
+
+
+##### 代码无提示问题
+
+在编写代码的时候，不提示代码容易出现写错以及费时的问题。
+
+可以在创建的目录中打开c\_cpp\_properties.json文件。
+
+![](pic_win/cdd39cb66af14708b09987baa8d16fe2.png)
+
+打开后在[配置文件](https://so.csdn.net/so/search?q=%E9%85%8D%E7%BD%AE%E6%96%87%E4%BB%B6&spm=1001.2101.3001.7020)中修改内容。
+
+16行，17行的数字要保持一致。
+
+![](pic_win/2732171a9b524537acc4d39738784fd4.png)
+
+就可以提示代码了。
+
+在使用自定义msg进行话题通信时，如果没有在.vscode下的setting.json文件中配置我们定义的文件的目录，也不会有补齐代码的功能。
+
+即需要在.vscode下的setting.json文件中配置，devel下的lib下的，python3/dist-packages  
+![](pic_win/e7734a32d3424f9aa332286be9e96712.png)
+
+
+
+##### ROS_INFO文本高亮报错
+
+在c_cpp_properties.json文件中将
+      "cStandard": "gnu11",
+      "cppStandard": "c++11"
+
+C插件的版本调整至1.20.5
+
+重启虚拟机，方可解决
+
+
 
 **创建 ROS 功能包**
 
@@ -608,7 +688,11 @@ ROS 中的基本通信机制主要有如下三种实现策略:
 在模型实现中，ROS master 不需要实现，而连接的建立也已经被封装了，需要关注的关键点有三个:
 
 1. 发布方
+
+   
+
 2. 接收方
+
 3. 数据(此处为普通文本)
 
 **流程:**
@@ -1817,7 +1901,7 @@ rosrun plumbing_server_client demo01_server_p.py
 
 新建功能包：plumbing_param_server
 
-plumbing_param_server/src中新建文件：demo01_param_det.cpp
+plumbing_param_server/src中新建文件：demo01_param_set.cpp
 
 ```cpp
 /*
@@ -4625,6 +4709,7 @@ namespace hello_ns{
 #include "ros/ros.h"
 #include "plumbing_head_src/hello.h"
 
+
 int main(int argc, char *argv[])
 {
     setlocale(LC_ALL,"");
@@ -5300,7 +5385,7 @@ rosnode list
 
 launch文件夹中新建arg.launch
 
-```
+```xml
 <launch>
     <!-- 需求：演示arg的使用，设置多个同值参数（小车长度） -->
     <!-- <param name="A" value="0.5" />
@@ -6099,13 +6184,13 @@ geometry_msgs/Transform transform		#描述二者关系
 
 动态坐标变换：两坐标系位置不相对固定，如手指之间的相对位置
 
-已知雷达相对于主体: x 0.2 y0.0 z0.5。当前雷达检测到一障碍物坐标为 (2.0 3.0 5.0),该障碍物相对于主体的坐标是（2.2,3.0,5.5)
+已知雷达相对于主体: x0.2 y0.0 z0.5。当前雷达检测到一障碍物坐标为 (2.0 3.0 5.0),该障碍物相对于主体的坐标是（2.2,3.0,5.5)
 
 ##### cpp
 
 创建功能包tf01_static
 
-添加依赖：tf2、tf2_ros、tf2_geometry_msgs、geometry_msgs、roscpp、 rospy、std_msgs 
+添加依赖：tf2 tf2_ros tf2_geometry_msgs geometry_msgs roscpp rospy std_msgs 
 
 创建文件：demo01_static_pub.cpp，配置cmakelist（bulid中：可执行文件、依赖文件、目标链接库）
 
@@ -6651,7 +6736,7 @@ float32 angular_velocity
 
 ##### CPP
 
-创建功能包tf02_dynamic，添加依赖 tf2、tf2_ros、tf2_geometry_msgs、roscpp rospy std_msgs geometry_msgs、turtlesim
+创建功能包tf02_dynamic，添加依赖 tf2 tf2_ros tf2_geometry_msgs roscpp rospy std_msgs geometry_msgs turtlesim
 
 demo01_dynamic_pub.cpp
 
@@ -7001,7 +7086,7 @@ rosrun tf02_dynamic demo02_dynamic_sub
 
 ##### CPP
 
-创建功能包tf03_tfs，依赖包：tf2、tf2_ros、tf2_geometry_msgs、roscpp rospy std_msgs geometry_msgs、turtlesim，编译
+创建功能包tf03_tfs，依赖包：tf2 tf2_ros tf2_geometry_msgs roscpp rospy std_msgs geometry_msgs turtlesim，编译
 
 **发布方**
 
@@ -7267,7 +7352,7 @@ CPP
 
 创建功能包：tf04_test
 
-添加依赖：tf2、tf2_ros、tf2_geometry_msgs、roscpp rospy std_msgs geometry_msgs、turtlesim
+添加依赖：tf2 tf2_ros tf2_geometry_msgs roscpp rospy std_msgs geometry_msgs turtlesim
 
 新建launch文件夹，创建launch文件test.launch
 
@@ -7576,7 +7661,7 @@ rosbag play 文件名
 
 #### 编码
 
-创建功能包rosbag_demo，依赖：roscpp,rospy,std_msgs,rosbag
+创建功能包rosbag_demo，依赖：roscpp rospy std_msgs rosbag
 
 创建文件：demo01_write_bag.cpp
 
@@ -8034,7 +8119,7 @@ ___
 
 joint
 
-urdf 中的 joint 标签用于描述机器人关节的运动学和动力学属性，还可以指定关节运动的安全极限，机器人的两个部件(分别称之为 parent link 与 child link)以"关节"的形式相连接，不同的关节有不同的运动形式: 旋转、滑动、固定、旋转速度、旋转角度限制....,比如:安装在底座上的轮子可以360度旋转，而摄像头则可能是完全固定在底座上。
+urdf 中的 joint 标签用于描述机器人关节的运动学和动力学属性，还可以指定关节运动的安全极限，机器人的两个部件(分别称之为 parent link 与 child link)以"关节"的形式相连接，不同的关节有··不同的运动形式: 旋转、滑动、固定、旋转速度、旋转角度限制....,比如:安装在底座上的轮子可以360度旋转，而摄像头则可能是完全固定在底座上。
 
 joint标签对应的数据在模型中是不可见的
 
@@ -8081,6 +8166,8 @@ joint标签对应的数据在模型中是不可见的
 **需求:**创建机器人模型，底盘为长方体，在长方体的前面添加一摄像头，摄像头可以沿着 Z 轴 360 度旋转。
 
 **URDF文件示例如下:**
+
+demo03_joint.urdf
 
 ```xml
 <!-- 
@@ -8129,6 +8216,8 @@ joint标签对应的数据在模型中是不可见的
 ```
 
 **launch文件示例如下:**
+
+demo03_joint.launch
 
 ```xml
 <launch>
@@ -8220,60 +8309,21 @@ demo04_base_footprint.urdf
 demo04_base_footprint.launch
 
 ```xml
-<!--
-    使用 base_footprint 优化
--->
-<robot name="mycar">
-    <!-- 设置一个原点(机器人中心点的投影) -->
-    <link name="base_footprint">
-        <visual>
-            <geometry>
-                <sphere radius="0.001" />
-            </geometry>
-        </visual>
-    </link>
+<launch>
 
-    <!-- 添加底盘 -->
-    <link name="base_link">
-        <visual>
-            <geometry>
-                <box size="0.5 0.2 0.1" />
-            </geometry>
-            <origin xyz="0 0 0" rpy="0 0 0" />
-            <material name="blue">
-                <color rgba="0 0 1.0 0.5" />
-            </material>
-        </visual>
-    </link>
+    <param name="robot_description" textfile="$(find urdf01_rviz)/urdf/urdf/demo04_base_footprint.urdf" />
+    <!-- 可选:用于控制关节运动的节点 -->
+    <!-- <node pkg="joint_state_publisher_gui" type="joint_state_publisher_gui" name="joint_state_publisher_gui" /> -->
 
-    <!-- 底盘与原点连接的关节 -->
-    <joint name="base_link2base_footprint" type="fixed">
-        <parent link="base_footprint" />
-        <child link="base_link" />
-        <origin xyz="0 0 0.05" />
-    </joint>
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find urdf01_rviz)/config/show_mycar.rviz" /> 
 
-    <!-- 添加摄像头 -->
-    <link name="camera">
-        <visual>
-            <geometry>
-                <box size="0.02 0.05 0.05" />
-            </geometry>
-            <origin xyz="0 0 0" rpy="0 0 0" />
-            <material name="red">
-                <color rgba="1 0 0 0.5" />
-            </material>
-        </visual>
-    </link>
-    <!-- 关节 -->
-    <joint name="camera2baselink" type="continuous">
-        <parent link="base_link"/>
-        <child link="camera" />
-        <origin xyz="0.2 0 0.075" rpy="0 0 0" />
-        <axis xyz="0 0 1" />
-    </joint>
+    <!-- 添加关节状态发布节点 -->
+    <node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher" />
+    <!-- 添加机器人状态发布节点 -->
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" />
 
-</robot>
+
+</launch>
 ```
 
 
@@ -8591,6 +8641,8 @@ ___
 
 编写 Xacro 文件，以变量的方式封装属性(常量半径、高度、车轮半径...)，以函数的方式封装重复实现(车轮的添加)。
 
+demo01_helloworld.urdf.xacro
+
 ```xml
 <robot name="mycar" xmlns:xacro="http://wiki.ros.org/xacro">
     <!-- 属性封装 -->
@@ -8871,6 +8923,8 @@ book@100ask:~/ws/src/urdf01_rviz/urdf/xacro$ rosrun xacro xacro demo04_sum.urdf.
 
 1.编写 Xacro 文件
 
+demo05_car_base.urdf.xacro
+
 ```xml
 <!--
     使用 xacro 优化 URDF 版的小车底盘实现：
@@ -9046,6 +9100,8 @@ launch 内容示例:
 
 摄像头 xacro 文件:
 
+demo06_car_camera.urdf.xacro
+
 ```xml
 <!-- 摄像头相关的 xacro 文件 -->
 <robot name="my_camera" xmlns:xacro="http://wiki.ros.org/xacro">
@@ -9077,6 +9133,8 @@ launch 内容示例:
 ```
 
 雷达 xacro 文件:
+
+demo07_car_laser.urdf.xacro
 
 ```xml
 <!--
@@ -9138,6 +9196,8 @@ launch 内容示例:
 
 2.组合底盘摄像头与雷达的 xacro 文件
 
+car.urdf.xacro
+
 ```xml
 <!-- 组合小车底盘与摄像头与雷达 -->
 <robot name="my_car_camera" xmlns:xacro="http://wiki.ros.org/xacro">
@@ -9148,6 +9208,8 @@ launch 内容示例:
 ```
 
 3.launch 文件
+
+demo06_car_base.launch
 
 ```xml
 <launch>
@@ -9434,9 +9496,13 @@ URDF 与 Gazebo 集成流程与 Rviz 实现类似，主要步骤如下:
 
 1.创建功能包
 
-创建新功能包，导入依赖包: urdf、xacro、gazebo\_ros、gazebo\_ros\_control、gazebo\_plugins
+创建新功能包urdf02_gazebo，导入依赖包: urdf xacro gazebo_ros gazebo_ros_control gazebo_plugins
+
+功能包下创建文件夹：launch,urdf,urdf\gazebo,worlds
 
 2.编写URDF文件
+
+demo01_helloworld.urdf
 
 ```xml
 <!-- 
@@ -9485,6 +9551,8 @@ URDF 与 Gazebo 集成流程与 Rviz 实现类似，主要步骤如下:
 
 launch 文件实现:
 
+demo01_helloworld.launch
+
 ```xml
 <launch>
 
@@ -9520,7 +9588,26 @@ launch 文件实现:
 -->
 ```
 
+#### 6.6.1.2 界面问题
+
+**界面无法显示**
+
+在.bashrc里面添加代码
+
+```bash
+export QT_AUTO_SCREEN_SCALE_FACTOR=0
+export QT_SCREEN_SCALE_FACTORS=[1.0]
+```
+
+**显示的图像全灰色**
+
+左侧界面中的world\scene\shadows 后的√去除掉
+
+
+
 #### 6.6.2 URDF集成Gazebo相关设置
+
+
 
 较之于 rviz，gazebo在集成 URDF 时，需要做些许修改，比如:必须添加 collision 碰撞属性相关参数、必须添加 inertial 惯性矩阵相关参数，另外，如果直接移植 Rviz 中机器人的颜色设置是没有显示的，颜色设置也必须做相应的变更。
 
@@ -9644,7 +9731,6 @@ head.xacro
 demo05_car_base.urdf.xacro
 
 ```xml
-
 <robot name="my_base" xmlns:xacro="http://www.ros.org/wiki/xacro">
     <xacro:property name="PI" value="3.1415926"/>
     <material name="black">
@@ -9918,7 +10004,6 @@ D.组合底盘、摄像头与雷达的 Xacro 文件
 car.urdf.xacro
 
 ```xml
-
 <robot name="my_car_camera" xmlns:xacro="http://wiki.ros.org/xacro">
 
     <xacro:include filename="head.xacro" />
@@ -9942,10 +10027,8 @@ demo03_env.launch
     <param name="robot_description" command="$(find xacro)/xacro $(find urdf02_gazebo)/urdf/car.urdf.xacro" />
 
     <!-- 启动 gazebo -->
-    <include file="$(find gazebo_ros)/launch/empty_world.launch">
-        <arg name="world_name" value="$(find urdf02_gazebo)/worlds/box_house.world" />
-    </include>
-
+    <include file="$(find gazebo_ros)/launch/empty_world.launch" />
+    
     <!-- 在 gazebo 中显示机器人模型 -->
     <node pkg="gazebo_ros" type="spawn_model" name="model" args="-urdf -model mycar -param robot_description"  />
 </launch>
@@ -9976,16 +10059,19 @@ Gazebo 中创建仿真实现方式有两种:
 
 1.3 启动
 
+demo03_env.launch
+
 ```xml
 <launch>
 
     <!-- 将 Urdf 文件的内容加载到参数服务器 -->
-    <param name="robot_description" command="$(find xacro)/xacro $(find demo02_urdf_gazebo)/urdf/xacro/my_base_camera_laser.urdf.xacro" />
+    <param name="robot_description" command="$(find xacro)/xacro $(find urdf02_gazebo)/urdf/car.urdf.xacro" />
+
     <!-- 启动 gazebo -->
     <include file="$(find gazebo_ros)/launch/empty_world.launch">
-        <arg name="world_name" value="$(find demo02_urdf_gazebo)/worlds/hello.world" />
+        <arg name="world_name" value="$(find urdf02_gazebo)/worlds/hello.world" />
     </include>
-
+    
     <!-- 在 gazebo 中显示机器人模型 -->
     <node pkg="gazebo_ros" type="spawn_model" name="model" args="-urdf -model mycar -param robot_description"  />
 </launch>
@@ -9994,9 +10080,9 @@ Gazebo 中创建仿真实现方式有两种:
 核心代码: 启动 empty\_world 后，再根据`arg`加载自定义的仿真环境
 
 ```xml
-<include file="$(find gazebo_ros)/launch/empty_world.launch">
-    <arg name="world_name" value="$(find demo02_urdf_gazebo)/worlds/hello.world" />
-</include>
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name" value="$(find urdf02_gazebo)/worlds/hello.world" />
+    </include>
 ```
 
 2.自定义仿真环境
@@ -10070,7 +10156,7 @@ gazebo 中已经可以正常显示机器人模型了，那么如何像在 rviz �
 
 1.ros\_control 简介
 
-**场景:**同一套 ROS 程序，如何部署在不同的机器人系统上，22222220比如：开发阶段为了提高效率是在仿真平台上测试的，部署时又有不同的实体机器人平台，不同平台的实现是有差异的，如何保证 ROS 程序的可移植性？ROS 内置的解决方式是 ros\_control。
+**场景:**同一套 ROS 程序，如何部署在不同的机器人系统上，比如：开发阶段为了提高效率是在仿真平台上测试的，部署时又有不同的实体机器人平台，不同平台的实现是有差异的，如何保证 ROS 程序的可移植性？ROS 内置的解决方式是 ros\_control。
 
 **ros\_control:**是一组软件包，它包含了控制器接口，控制器管理器，传输和硬件接口。ros\_control 是一套机器人控制的中间件，是一套规范，不同的机器人平台只要按照这套规范实现，那么就可以保证 与ROS 程序兼容，通过这套规范，实现了一种可插拔的架构设计，大大提高了程序设计的效率与灵活性。
 
@@ -10206,7 +10292,7 @@ launch文件:
 
 使用命令控制(或者可以编写单独的节点控制)
 
-```
+```c
 rostopic pub -r 10 /cmd_vel geometry_msgs/Twist '{linear: {x: 0.2, y: 0, z: 0}, angular: {x: 0, y: 0, z: 0.5}}'
 ```
 
@@ -10855,7 +10941,7 @@ ___
 -   安装 navigation 包(用于定位以及路径规划):`sudo apt install ros-<ROS版本>-navigation`
     
 
-新建功能包，并导入依赖: gmapping map\_server amcl move\_base
+新建功能包，并导入依赖: gmapping map_server amcl move_base
 
 
 
@@ -11027,13 +11113,23 @@ launch文件编写可以参考 github 的演示 launch文件：[https://github.c
 
 1.先启动 Gazebo 仿真环境(此过程略)
 
+```shell
+roslaunch urdf02_gazebo demo03_env.launch
+```
+
 2.然后再启动地图绘制的 launch 文件:
 
 `roslaunch 包名 launch文件名`
 
+```
+roslaunch nav_demo nav01_slam.launch
+```
+
 3.启动键盘键盘控制节点，用于控制机器人运动建图
 
-`rosrun teleop_twist_keyboard teleop_twist_keyboard.py`
+```
+rosrun teleop_twist_keyboard teleop_twist_keyboard.py
+```
 
 4.在 rviz 中添加组件，显示栅格地图![](pic_linux/slam演示-17343581110372.PNG)最后，就可以通过键盘控制gazebo中的机器人运动，同时，在rviz中可以显示gmapping发布的栅格地图数据了，下一步，还需要将地图单独保存。
 
@@ -11119,7 +11215,7 @@ negate: 0
 # 判断规则：
 # 1.地图中的每个像素都有取值[0,255],白色255，黑色0
 # 2.根据像素值计算一个比例： p=(255-x)/255 白色0 黑色1，灰色是介于0~1的值
-# 3.判断是障碍物：p>occupied_thresh是障碍物，p<free_thresh 是无障碍物
+# 3.判断是障碍物：p>occupied_thresh是障碍物，p<free_thresh是无障碍物
 # 4.如果像素值在两阈值之间，表示未知区域
 
 #5.占用阈值
@@ -11136,12 +11232,11 @@ free_thresh: 0.196
     
 -   **origin**: 地图中左下像素的二维姿势，为（x，y，偏航），偏航为逆时针旋转（偏航= 0表示无旋转）。
     
--   **occupied\_thresh**: 占用概率大于此阈值的像素被视为完全占用。
+-   **occupied_thresh**: 占用概率大于此阈值的像素被视为完全占用。
     
--   **free\_thresh**: 占用率小于此阈值的像素被视为完全空闲。
+-   **free_thresh**: 占用率小于此阈值的像素被视为完全空闲。
     
 -   **negate**: 是否应该颠倒白色/黑色自由/占用的语义。
-    
 
 map\_server 中障碍物计算规则:
 
@@ -11355,7 +11450,6 @@ ls examples
     <param name="odom_frame_id" value="odom"/><!-- 添加里程计坐标系 -->
     <param name="base_frame_id" value="base_footprint"/><!-- 添加基坐标系 -->
     <param name="global_frame_id" value="map"/><!-- 添加地图坐标系 -->
-
 
     <param name="resample_interval" value="1"/>
     <param name="transform_tolerance" value="0.1"/>
@@ -11581,7 +11675,7 @@ launch文件解释:
 
 配置文件修改以及解释:
 
-4.2.1costmap\_common\_params.yaml
+4.2.1costmap_common_params.yaml
 
 该文件是move\_base 在全局路径规划与本地路径规划时调用的通用参数，包括:机器人的尺寸、距离障碍物的安全距离、传感器信息等。配置参考如下:
 
@@ -11738,7 +11832,9 @@ TrajectoryPlannerROS:
 
 4.通过Rviz工具栏的 2D Nav Goal设置目的地实现导航。
 
-![](pic_linux/导航-173496342011812.gif)5.也可以在导航过程中，添加新的障碍物，机器人也可以自动躲避障碍物。
+![](pic_linux/导航-173496342011812.gif)
+
+5.也可以在导航过程中，添加新的障碍物，机器人也可以自动躲避障碍物。
 
 ___
 
@@ -11756,8 +11852,8 @@ ___
 
 该过程实现比较简单，步骤如下:
 
-1.  编写launch文
-1.  件，集成SLAM与move\_base相关节点；
+1.  编写launch文件，
+1.  集成SLAM与move\_base相关节点；
 2.  执行launch文件并测试。
 
 1.编写launc文件
@@ -12383,7 +12479,7 @@ action、srv、msg 文件内的可用数据类型一致，且三者实现流程�
 
 1.定义action文件
 
-首先新建功能包，并导入依赖: `roscpp rospy std_msgs actionlib actionlib_msgs`；
+首先新建功能包demo01_action，并导入依赖: roscpp rospy std_msgs actionlib actionlib_msgs
 
 然后功能包下新建 action 目录，新增 Xxx.action(比如:AddInts.action)。
 
@@ -12973,7 +13069,7 @@ ___
 
 1.新建功能包
 
-新建功能包，添加依赖:`roscpp rospy std_msgs dynamic_reconfigure`。
+新建功能包demo02_dr，添加依赖:roscpp rospy std_msgs dynamic_reconfigure
 
 2.添加.cfg文件
 
@@ -13326,7 +13422,7 @@ ___
 
 ##### 1.准备
 
-创建功能包xxx导入依赖: roscpp pluginlib。
+创建功能包demo03_plugin导入依赖: roscpp pluginlib。
 
 在 VSCode中需要配置 .vascode/c\_cpp\_properties.json文件中关于 includepath 选项的设置。
 
@@ -13335,18 +13431,19 @@ ___
     "configurations": [
         {
             "browse": {
-                "databaseFilename": "",
-                "limitSymbolsToIncludedHeaders": true
+                "databaseFilename": "${default}",
+                "limitSymbolsToIncludedHeaders": false
             },
             "includePath": [
                 "/opt/ros/noetic/include/**",
                 "/usr/include/**",
-                "/.../yyy工作空间/功能包/include/**" //配置 head 文件的路径 
+                "/home/ubuntu2004/advanced_ws/devel/include/**",
+                "${workspaceFolder}/src/demo03_plugin/include"
             ],
             "name": "ROS",
             "intelliSenseMode": "gcc-x64",
             "compilerPath": "/usr/bin/gcc",
-            "cStandard": "c11",
+            "cStandard": "gnu17",
             "cppStandard": "c++17"
         }
     ],
@@ -13441,7 +13538,7 @@ namespace dbx_plugins_ns{
 
 ##### 4.注册插件
 
-在 src 目录下新建 polygon\_plugins.cpp 文件，内容如下:
+在 src 目录下新建 polygon_plugins.cpp 文件，内容如下:
 
 /home/book/ws/src/demo03_plugin/src/plus.cpp
 
@@ -13660,6 +13757,8 @@ sudo apt install ros-<<ROS_DISTRO>>-nodelet-tutorial-math
 
 在该案例中，定义了一个Nodelet插件类:Plus，这个节点可以订阅一个数字，并将订阅到的数字与参数服务器中的 value 参数相加后再发布。
 
+
+
 **需求:**再同一线程中启动两个Plus节点A与B，向A发布一个数字，然后经A处理后，再发布并作为B的输入，最后打印B的输出。
 
 2.nodelet 基本使用语法
@@ -13774,7 +13873,7 @@ nodelet本质也是插件，实现流程与插件实现流程类似，并且更�
 
 1.准备
 
-新建功能包，导入依赖: roscpp、nodelet；
+新建功能包demo04_nodelet，导入依赖: roscpp nodelet
 
 2.创建插件类并注册插件
 
@@ -13899,4 +13998,21 @@ target_link_libraries(myplus
 
 运行launch文件，可以参考上一节方式向 p1发布数据，并订阅p2输出的数据，最终运行结果也与上一节类似。
 
+4.执行
+
+向节点n1发布消息:
+
+```
+rostopic pub -r 10 /xiaowang/in std_msgs/Float64 "data: 10.0"
+```
+
+打印节点n2发布的消息:
+
+```
+rostopic echo /ergou/out
+```
+
+最终输出结果应该是:60。
+
 ___
+
