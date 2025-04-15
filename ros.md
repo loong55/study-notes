@@ -7959,7 +7959,9 @@ demo01_helloworld.urdf
 
 #### 4.在 Rviz 中显示机器人模型
 
-rviz 启动后，会发现并没有盒装的机器人模型，这是因为默认情况下没有添加机器人显示组件，需要手动添加，添加方式如下:![](pic_linux/01_URDF文件执行rviz配置01.png)![](pic_linux/02_URDF文件执行rviz配置02.png)设置完毕后，可以正常显示了
+rviz 启动后，会发现并没有盒装的机器人模型，这是因为默认情况下没有添加机器人显示组件，需要手动添加，添加方式如下:![](pic_linux/01_URDF文件执行rviz配置01.png)![](pic_linux/02_URDF文件执行rviz配置02.png)
+
+设置完毕后，可以正常显示了
 
 #### 5.优化 rviz 启动
 
@@ -8066,6 +8068,8 @@ urdf 中的 link 标签用于描述机器人某个部件(也即刚体部分)的�
 
 3.案例
 
+机器人模型下载：[zx595306686/sim_demo](https://github.com/zx595306686/sim_demo)
+
 **需求:**分别生成长方体、圆柱与球体的机器人部件
 
 demo02_link.urdf
@@ -8081,7 +8085,7 @@ demo02_link.urdf
                 <!-- 圆柱，半径和长度 -->
                 <!-- <cylinder radius="0.5" length="0.1" /> -->
                 <!-- 球体，半径-->
-                <!-- <sphere radius="0.3" /> -->
+                <!-- <sphere  radius="0.3" /> -->
                 <!-- 皮肤 -->
                 <mesh filename="package://urdf01_rviz/meshes/autolabor_mini.stl" />               
 
@@ -10804,7 +10808,7 @@ ___
 
 1.  **SLAM**(simultaneous localization and mapping),也称为CML (Concurrent Mapping and Localization), 即时定位与地图构建，或并发建图与定位。SLAM问题可以描述为: 机器人在未知环境中从一个未知位置开始移动,在移动过程中根据位置估计和地图进行自身定位，同时在自身定位的基础上建造增量式地图，以绘制出外部环境的完全地图。
     
-2.  在 ROS 中，较为常用的 SLAM 实现也比较多，比如: gmapping、hector\_slam、cartographer、rgbdslam、ORB\_SLAM ....
+2.  在 ROS 中，较为常用的 SLAM 实现也比较多，比如: ==gmapping==、hector\_slam、==cartographer==、rgbdslam、ORB\_SLAM ....
     
 3.  当然如果要完成 SLAM ，机器人必须要具备感知外界环境的能力，尤其是要具备获取周围环境深度信息的能力。感知的实现需要依赖于传感器，比如: 激光雷达、摄像头、RGB-D摄像头...
     
@@ -10941,7 +10945,7 @@ ___
 -   安装 navigation 包(用于定位以及路径规划):`sudo apt install ros-<ROS版本>-navigation`
     
 
-新建功能包，并导入依赖: gmapping map_server amcl move_base
+新建功能包nav_demo，并导入依赖: gmapping map_server amcl move_base
 
 
 
@@ -11305,7 +11309,7 @@ ___
 
 #### 7.2.3 定位
 
-所谓定位就是推算机器人自身在全局地图中的位置，当然，SLAM中也包含定位算法实现，不过SLAM的定位是用于构建全局地图的，是属于导航开始之前的阶段，而当前定位是用于导航中，导航中，机器人需要按照设定的路线运动，通过定位可以判断机器人的实际轨迹是否符合预期。在ROS的导航功能包集navigation中提供了 amcl 功能包，用于实现导航中的机器人定位。
+所谓定位就是推算机器人自身在全局地图中的位置，当然，SLAM中也包含定位算法实现，不过SLAM的定位是用于构建全局地图的，是属于导航开始之前的阶段，而当前定位是用于导航中，导航中，机器人需要按照设定的路线运动，通过定位可以判断机器人的实际轨迹是否符合预期。在ROS的导航功能包集navigation中提供了 ==amcl== 功能包，用于实现导航中的机器人==定位。==
 
 1.amcl简介
 
@@ -13371,6 +13375,47 @@ ___
 **概念**
 
 **pluginlib**是一个c++库， 用来从一个ROS功能包中加载和卸载插件(plugin)。插件是指从运行时库中动态加载的类。通过使用Pluginlib，不必将某个应用程序显式地链接到包含某个类的库，Pluginlib可以随时打开包含类的库，而不需要应用程序事先知道包含类定义的库或者头文件。
+
+插件是动态加载的c++类（通过pluginlib库，将其封装为动态链接库，即so文件），这些类需继承预定义的抽象基类，并在编译后通过Pluginlib的接口，在运行时加载到主程序中
+
+```cpp
+/*抽象基类*/
+class base{
+public:
+    virtual void fun1() = 0;	//纯虚函数
+    virtual void fun2() = 0;
+    // ...其他函数    
+    virtual ~base() = default;
+}；
+```
+
+| 情况              | 是否支持多态       | 调用的函数版本     |
+| ----------------- | ------------------ | ------------------ |
+| 没有virtual       | 不支持             | 基类时的版本       |
+| virtual           | 支持               | 子类版本（如果有） |
+| 同时有virtual和=0 | 支持，强制子类实现 | 子类版本           |
+
+如果基类中至少存在一个纯虚函数，那这个基类就被称为 抽象基类
+
+抽象基类的特点：不能被实例化，只能被继承。并且继承抽象基类的子类必须要实现抽象基类中所有的纯虚函数
+
+```cpp
+/*派生类*/
+class son1 : public base{
+public:
+    void fun1() override {/*求和*/}	//override代表覆写纯虚函数（.h声明后可以不用）
+    void fun2() override {/*求积*/}
+    // ...其他技能
+};
+```
+
+派生类经过编译后，生成的so文件，才能称之为插件类，类似游戏的Mod，自身单独编译和主程序分离，有效减低代码的耦合性
+
+
+
+
+
+
 
 **作用**
 
