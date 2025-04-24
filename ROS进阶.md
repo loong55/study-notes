@@ -735,7 +735,7 @@ public:
 
 派生类经过编译后，生成的so文件，才能称之为插件类，类似游戏的Mod，自身单独编译和主程序分离，有效减低代码的耦合性
 
-#### 2.构建全局路径规划器流程
+#### 2.构建流程
 
 1.环境准备
 
@@ -755,7 +755,7 @@ public:
 
 > ros仿真环境测试
 
-1.环境准备
+##### 1.环境准备
 
 ​	catkin目录创建
 
@@ -781,7 +781,7 @@ bot@windows:~/nav/catkin_wp$ catkin_make
 
 [nav_core: nav_core::BaseGlobalPlanner Class Reference](https://docs.ros.org/en/api/nav_core/html/classnav__core_1_1BaseGlobalPlanner.html)
 
-2.简单全局路径规划器
+##### 2.简单全局路径规划器
 
 ​	1.头文件创建：继承抽象基类，声明函数
 
@@ -816,5 +816,127 @@ namespace nav_global_planner {
     };
 }
 #endif
+```
+
+​	2.cpp具体实现：实现纯虚函数，注册插件接口
+
+/home/bot/nav/catkin_wp/src/nav_global_planner/src/nav_global_planner.cpp
+
+```cpp
+//引入头文件
+#include "nav_global_planner.h"
+#include "pluginlib/class_list_macros.h"
+//外部导入拓展插件类,参数：子类，父类
+PLUGINLIB_EXPORT_CLASS(nav_global_planner::NavGlobalPlanner,nav_core::BaseGlobalPlanner)
+
+//实现无参构造函数
+namespace nav_global_planner{
+    NavGlobalPlanner::NavGlobalPlanner():initialized_(false){
+    
+    }
+    NavGlobalPlanner::NavGlobalPlanner(std::string name,costmap_2d::Costmap2DROS* costmap_2d){
+        initialize(name,costmap_2d);
+    }
+
+    void NavGlobalPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costmap_ros){
+        if(!initialized_)
+        {
+            //初始化环节
+            costmap_ = costmap_ros->getCostmap();
+            //初始化后就不再重新初始化
+            initialized_= true;
+        }
+    }
+
+    //全局路径规划---直线，start机器人的位置，goal rviz给出的位置
+    bool NavGlobalPlanner::makePlan(const geometry_msgs::PoseStamped &start, 
+        const geometry_msgs::PoseStamped &goal,
+        std::vector<geometry_msgs::PoseStamped> &plan){
+            if(!initialized_){
+                //如果没有初始化，直接报错
+                ROS_ERROR("Planner is not initialized!");
+                return false;
+            }
+            
+            //plan里面就是要走过的路径点
+            plan.clear();
+            //写一个最简单的规划器,直接起点到终点
+            plan.push_back(start);
+            plan.push_back(goal);
+            return true;
+    }
+}    
+```
+
+修改cmakelists
+
+```cmake
+include_directories(
+include
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_library(${PROJECT_NAME}
+  src/nav_global_planner.cpp
+)
+```
+
+编译
+
+```bash
+catkin_make
+```
+
+##### 3.编写描述性文件
+
+/home/bot/nav/catkin_wp/src/nav_global_planner/plugin.xml
+
+```xml
+<!-- 插件库的相对路径 -->
+<library path="lib/libnav_global_planner">
+  <!-- name="插件名称namespace+类名" type="插件类" base_class_type="基类" -->
+  <class name="nav_global_planner/NavGlobalPlanner" type="nav_global_planner::NavGlobalPlanner" 
+         base_class_type="nav_core::BaseGlobalPlanner">
+    <!-- 描述信息 -->
+    <description>My custom global planner</description>
+  </class>
+</library>
+```
+
+/home/bot/nav/catkin_wp/src/nav_global_planner/package.xml
+
+```xml
+  <export>
+    <!-- Other tools can request additional information be placed here -->
+    <!-- ${prefix} 表示自动寻找功能包 -->
+    <nav_core plugin = "${prefix}/plugin.xml" />
+  </export>
+```
+
+编译
+
+```bash
+catkin_make
+```
+
+验证
+
+```bash
+bot@windows:~/nav/catkin_wp$ rospack plugins --attrib=plugin nav_core
+clear_costmap_recovery /opt/ros/noetic/share/clear_costmap_recovery/ccr_plugin.xml
+......
+nav_global_planner /home/bot/nav/catkin_wp/src/nav_global_planner/plugin.xml	#出现这一行
+```
+
+3.验证环节  ros仿真环境测试
+
+加入缺失文件
+
+[codesharks1/Custom-global-path-planner](https://github.com/codesharks1/Custom-global-path-planner)
+
+编译 catkin_make
+
+```
+
 ```
 
