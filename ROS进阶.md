@@ -940,3 +940,17 @@ nav_global_planner /home/bot/nav/catkin_wp/src/nav_global_planner/plugin.xml	#�
 
 ```
 
+## 3.阿杰补充知识点
+
+#### 1.TF系统
+
+地图原点坐标系：map;
+
+机器人底盘在地面的投影点：base_footprint(底盘脚印);
+
+查看
+
+```shell
+rosrun rqt_tf_tree rqt_tf_tree
+```
+
