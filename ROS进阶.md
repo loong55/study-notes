@@ -948,9 +948,512 @@ nav_global_planner /home/bot/nav/catkin_wp/src/nav_global_planner/plugin.xml	#�
 
 机器人底盘在地面的投影点：base_footprint(底盘脚印);
 
-查看
+查看坐标树
 
 ```shell
 rosrun rqt_tf_tree rqt_tf_tree
+```
+
+<img src="pic_win/image-20250424223202486.png" alt="image-20250424223202486" style="zoom:80%;" />
+
+父坐标：map，子坐标：odom
+
+#### 2.里程计
+
+是一种软件算法，用于计算机器人运动的距离，从而计算出位姿，话题名称：/odom
+
+作用：与激光雷达点云信息进行融合，弥补匹配信息不充分的情况；同时，点云匹配可以修正里程计累计误差
+
+坐标树：odmo-->bese_footprint，里程计作为底盘的父坐标
+
+slam最终输出TF:map-->base_footprint,中间插入odom;先利用odom里程计计算机器人位移
+再利用slam修正里程计误差（gmapping算法）
+
+#### 3.建图与保存地图
+
+1.启动建图节点，用遥控器控制机器人建图
+
+2.保存地图
+
+```shell
+rosrun map_server map_saver -f map
+```
+
+3.加载地图到参数服务器
+
+```
+rosrun map_server map_server map.yaml
+```
+
+```
+rosrun rviz rviz
+```
+
+#### 4.Navigation导航系统
+
+![image-20250425190539832](pic_win/image-20250425190539832.png)
+
+![image-20250425190604436](pic_win/image-20250425190604436.png)
+
+#### 5.全局路径规划算法
+
+典型广度优先算法：dijkstra（迪杰斯特拉）,大水漫盖栅格地图
+
+![image-20250426144503208](pic_win/image-20250426144503208.png)
+
+典型深度优先算法：A*算法，确定大致方向，再进行路径规划；优点是算力消耗小
+
+![image-20250426144915694](pic_win/image-20250426144915694.png)
+
+![image-20250426145023898](pic_win/image-20250426145023898.png)
+
+Navfn 默认采用dijkstra算法，A星有bug；global_planner是nav的优化版，可以设置dijkstra和A*,
+
+A*设置方法：
+
+![image-20250426145541367](pic_win/image-20250426145541367.png)
+
+如今计算消耗都差不多，优先使用dijkstra，路径更平滑，距离最短
+
+**carrot_planner全局路径规划器**
+
+起始点到目标点走直线，遇到障碍物停止，很少被使用，常用于自定义规划器模板进行修改
+
+#### 6.AMCL定位算法
+
+自适应蒙特卡洛定位算法，机器人使用影分身，扫描周围障碍物，并于地图进行匹配，选取最优影分身作为当前位姿；（详情看《概率机器人》）
+
+tf树输出机制
+
+<img src="pic_win/image-20250424223202486.png" alt="image-20250424223202486" style="zoom: 50%;" />
+
+<img src="pic_win/image-20250426152038418.png" alt="image-20250426152038418" style="zoom:50%;" />
+
+amcl负责输出map-->odom的tf,里程计负责输出odom-->base_footprint的tf，切换本体和分身
+
+影分身替代本体，通过切换map-->odom的tf来实现跳变
+
+#### 7.代价地图参数
+
+costmap_common_params.yaml
+
+```yaml
+robot_radius: 0.25		# 机器人底盘半径
+inflation_radius: 0.5	# 膨胀半径
+obstacle_range: 1.0		# 障碍物范围，单位m；1m范围内的障碍物加入代价地图
+raytrace_range: 6.0		# 射线追踪范围，单位m; 6米范围内，被射线穿过的栅格，认为无障碍物，清除动态障碍物残影
+observation_sources: base_lidar		# 观测源--底盘上的激光雷达  
+
+# 激光雷达 数据参数
+base_lidar: {
+
+    data_type: LaserScan,    # 数据类型
+    topic: /scan, 			# 话题名称
+    marking: true, 			# 将扫描到的障碍物，添加到代价地图
+    clearing: true		 	# 清除动态障碍物残影
+    }
+```
+
+<img src="pic_win/image-20250426161514672.png" alt="image-20250426161514672" style="zoom:33%;" />![image-20250426161716268](pic_win/image-20250426161716268.png)
+
+<img src="pic_win/image-20250426163047810.png" alt="image-20250426163047810" style="zoom:50%;" />
+
+添加深度相机参数，补盲
+
+```yaml
+global_costmap:
+  # 全局成本图配置参数
+  # ---------------------
+  # 全局坐标系名称（通常为地图坐标系）
+  global_frame: map
+    
+  # 机器人底座坐标系名称（底盘中心点）
+  robot_base_frame: base_footprint
+    
+  # 是否将map_server发来的地图作为静态地图?,如果设置为否，则只能一边建图一边导航
+  static_map: true
+    
+  # 将新障碍物添加到全局代价地图的频率，1Hz
+  update_frequency: 1.0
+    
+  # 地图发布频率（Hz），发布到rviz的频率
+  # 控制ROS话题的发布频率
+  publish_frequency: 1.0
+    
+  # 坐标变换容忍时间（秒） tf树中 laser_frame--> ... -->map 的转换时间
+  # 超过此时间未收到有效坐标变换会抛出异常，出现了tf timeout 报错，调大
+  transform_tolerance: 1.0
+
+```
+
+```yaml
+local_costmap:
+  # 局部成本图配置参数
+  # ---------------------
+  # 全局坐标系名称（通常为里程计坐标系）
+  # 原因：amcl导致map-->odom的tf跳变,（map跳动），如果全局坐标系设为map会导致局部路径规划不连续
+  global_frame: odom
+  
+  # 机器人底座坐标系名称（底盘中心点）
+  robot_base_frame: base_footprint
+  
+  # 是否使用静态地图（false: 不使用静态地图，使用激光雷达扫描到的临时地图动态更新）
+  # 局部成本图通常用于动态环境，因此设置为false
+  static_map: false
+  
+  # 是否使用滚动窗口（true: 使用滚动窗口，跟随机器人移动）
+  # 滚动窗口用于实时更新机器人周围的成本图
+  rolling_window: true
+  
+  # 滚动窗口的宽度（米）
+  # 定义了局部成本图的横向覆盖范围
+  width: 3.0
+  
+  # 滚动窗口的高度（米）
+  # 定义了局部成本图的纵向覆盖范围
+  height: 3.0
+  
+  # 局部成本图更新频率（Hz），一般设置为激光雷达的扫描频率，每扫描一圈，规划一次
+  # 控制局部路径规划的计算频率
+  update_frequency: 10.0
+  
+  # 局部成本图发布频率（Hz）
+  # 控制ROS话题的发布频率
+  publish_frequency: 10.0
+  
+  # 坐标变换容差时间（秒）
+  # 超过此时间未收到有效坐标变换会抛出异常
+  transform_tolerance: 1.0
+
+```
+
+#### 8.恢复行为
+
+遇到无法通过的障碍物时，重新全局路径规划
+
+保守重置：清除地图中，一定范围内的障碍物信息，重新规划导航路线
+
+旋转清除：原地旋转，用雷达彻底扫描周围，避免盲区障碍物残留未被刷新
+
+激进重置：清除地图中更大范围内的障碍物信息，重新规划导航路线
+
+**官方脱困策略**
+
+![image-20250426172451186](pic_win/image-20250426172451186.png)
+
+```yaml
+recovery_behaviors:
+  - name: 'conservative_reset'
+    type: 'clear_costmap_recovery/ClearCostmapRecovery'
+  - name: 'rotate_recovery'
+    type: 'rotate_recovery/RotateRecovery'
+  - name: 'aggressive_reset'
+    type: 'clear_costmap_recovery/ClearCostmapRecovery'
+
+conservative_reset:
+  reset_distance: 2.0				#残留动态地图清除范围（2米）
+  layer_names: ["obstacle_layer"]	 #清除的地图层--障碍物层（先验地图中，新加入的障碍物）
+
+aggressive_reset:
+  reset_distance: 0.0
+  layer_names: ["obstacle_layer"]
+```
+
+<img src="pic_win/image-20250426174037897.png" alt="image-20250426174037897" style="zoom:50%;" />
+
+
+
+**自定义脱困策略**
+
+![image-20250426173016297](pic_win/image-20250426173016297.png)
+
+src/wpb_home/wpb_home_tutorials/nav_lidar/global_costmap_params.yaml
+
+```yaml
+global_costmap:
+  global_frame: map
+  robot_base_frame: base_footprint
+  static_map: true
+  update_frequency: 1.0
+  publish_frequency: 1.0
+  transform_tolerance: 1.0
+
+recovery_behaviors:
+  - name: 'rotate_recovery'
+    type: 'rotate_recovery/RotateRecovery'
+  - name: 'reset_recovery'
+    type: 'clear_costmap_recovery/ClearCostmapRecovery'
+
+reset_recovery:
+  reset_distance: 1.84
+  layer_names: ["obstacle_layer"]
+```
+
+#### 9.局部规划器
+
+![image-20250426185520794](pic_win/image-20250426185520794.png)
+
+局部路径规划避障，Trajectory Planner ：ros自带的局部路径规划器（内部dwa）；DWA:Trajectory Planner 优化版
+
+Eband Plnanner 和 TEB类似,TEB性能更高；Wpbh 某特定机器人深度优化后的路径规划算法。
+
+**DWA**
+
+Dynamic Window Approach，动态窗口法
+
+1.生成轨迹：以当前机器人运动速度为基础，规划未来一段时间机器人的运动状态和移动路线，机器人运动为矢量运动加旋转运动；综合考虑底盘加速度限制，与障碍物保持有效刹车距离，尽快运动到轨迹终点。
+
+2.挑选轨迹：运动轨迹和全局导航路线的贴合程度（过程），轨迹末端和目标点的距离（目标），轨迹路线和障碍物之间的距离（终点）
+
+src/nav_pkg/launch/nav.launch
+
+```yaml
+<launch>
+    <!--- Run move_base -->
+    <node pkg="move_base" type="move_base" name="move_base">
+        <rosparam file="$(find wpb_home_tutorials)/nav_lidar/costmap_common_params.yaml" command="load" ns="global_costmap" />
+        <rosparam file="$(find wpb_home_tutorials)/nav_lidar/costmap_common_params.yaml" command="load" ns="local_costmap" />
+        <rosparam file="$(find wpb_home_tutorials)/nav_lidar/global_costmap_params.yaml" command="load" />
+        <rosparam file="$(find wpb_home_tutorials)/nav_lidar/local_costmap_params.yaml" command="load" />
+        <param name="base_global_planner" value="global_planner/GlobalPlanner" /> 
+        <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS" />
+        <rosparam file="$(find wpb_home_tutorials)/nav_lidar/dwa_local_planner_params.yaml" command="load"/>
+    </node>
+
+    <node pkg="map_server" type="map_server" name="map_server" args="$(find wpr_simulation)/maps/map.yaml"/>
+    <node pkg="amcl" type="amcl" name="amcl"/>
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find nav_pkg)/rviz/nav.rviz" />
+</launch>
+```
+
+先启动仿真环境，再启动路径规划
+
+动态调参
+
+```shell
+rosrun rqt_reconfigure rqt_reconfigure
+```
+
+**TEB**
+Time Elastic Band (时间弹性带)，形象理解：局部路径作为一条弹力带先贴合在全局路径上，然后受到障碍物斥力，导致弹性带形变避障；
+
+<img src="pic_win/image-20250426210529973.png" alt="image-20250426210529973" style="zoom: 25%;" />
+
+TEB根据机器人的速度和加速度这些运动性能，在绿色弹力带上预测，机器人会到哪个位置，根据最短时间，选取最优路径，常用于竞速机器人；安装teb
+
+```shell
+sudo apt install ros-noetic-teb-local-planner
+```
+
+缺点：不能原地转弯，会有倒车入库的尖角路径，适用于阿克曼模型，参数太多了，调参困难，不推荐使用
+
+#### 10.坐标点导航
+
+![image-20250426215125951](pic_win/image-20250426215125951.png)
+
+
+
+src/nav_pkg/src/nav_client.cpp
+
+```cpp
+#include <ros/ros.h>
+#include <move_base_msgs/MoveBaseAction.h>
+#include <actionlib/client/simple_action_client.h>
+
+//定义客户端对象
+typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
+
+int main(int argc, char** argv)
+{
+    ros::init(argc, argv, "nav_client");
+    //生成一个action客户端对象
+    MoveBaseClient ac("move_base", true);//ac为客户端对象名字，参数1：需要连接服务器名字，参数2：自动阻塞等待结果（不用写spin）
+    while (!ac.waitForServer(ros::Duration(5.0)))//等待5秒movebase服务器启动,启动成功返回ture，跳出循环，否则返回false
+    {
+        ROS_INFO("Waiting for the move_base action server to come up");
+    }
+    
+    move_base_msgs::MoveBaseGoal goal;//定义导航消息包--目标
+
+    goal.target_pose.header.frame_id = "map";//坐标系
+    goal.target_pose.header.stamp = ros::Time::now();//时间戳
+
+    //导航目标点，从slam建图原点开始计算
+    goal.target_pose.pose.position.x = -3.0;  
+    goal.target_pose.pose.position.y = 2.0;
+
+    //目标姿态,xyz默认为0，朝向与原来一致
+    goal.target_pose.pose.orientation.w = 1.0;
+
+    ROS_INFO("Sending goal");
+    ac.sendGoal(goal);
+
+    ac.waitForResult();//阻塞等待结果
+
+    if(ac.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+        ROS_INFO("Mission complete!");
+    else
+        ROS_INFO("Mission failed ...");
+
+    return 0;
+}
+```
+
+cmakelists
+
+```cmake
+add_executable(nav_client src/nav_client.cpp)
+
+add_dependencies(nav_client ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+
+target_link_libraries(nav_client
+  ${catkin_LIBRARIES}
+)
+```
+
+```shell
+catkin_make
+```
+
+测试：先启动gazebo仿真平台，再启动movebase+rviz，最后
+
+```
+rosrun nav_pkg nav_client 
+```
+
+车移动到指定坐标点
+
+#### 11.多点导航插件
+
+```shell
+roslaunch waterplus_map_tools add_waypoint_simulation.launch 
+```
+
+![image-20250426231533078](pic_win/image-20250426231533078.png)
+
+设置目标点，保存导航目标点
+
+```shell
+rosrun waterplus_map_tools wp_saver
+```
+
+启动仿真环境
+
+```
+roslaunch wpr_simulation wpb_map_tool.launch 
+```
+
+启动导航运动节点
+
+```
+rosrun wpr_simulation demo_map_tool
+```
+
+发现车自动移动到1号点
+
+![image-20250426234024813](pic_win/image-20250426234024813.png)
+
+wp_navi_server节点做客户端，给move_base节点发布单个航点信息，控制机器人移动到指定航点；
+
+通过waypoints.xml ---> wp_manager 管理并发布多航点信息
+
+demo_map_tool测试节点发布与接收航点话题，与wp_navi_server节点通信
+
+
+
+src/nav_pkg/launch/nav.launch
+
+```xaml
+<launch>
+    <!--- Run move_base -->
+    <node pkg="move_base" type="move_base" name="move_base">
+        <rosparam file="$(find wpb_home_tutorials)/nav_lidar/costmap_common_params.yaml" command="load" ns="global_costmap" />
+        <rosparam file="$(find wpb_home_tutorials)/nav_lidar/costmap_common_params.yaml" command="load" ns="local_costmap" />
+        <rosparam file="$(find wpb_home_tutorials)/nav_lidar/global_costmap_params.yaml" command="load" />
+        <rosparam file="$(find wpb_home_tutorials)/nav_lidar/local_costmap_params.yaml" command="load" />
+        <param name="base_global_planner" value="global_planner/GlobalPlanner" /> 
+        <param name="base_local_planner" value="wpbh_local_planner/WpbhLocalPlanner" />
+        <param name="controller_frequencey" value="10" type="double" />
+    </node>
+
+    <node pkg="map_server" type="map_server" name="map_server" args="$(find wpr_simulation)/maps/map.yaml"/>
+
+    <node pkg="amcl" type="amcl" name="amcl"/>
+
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find nav_pkg)/rviz/map_tool.rviz">
+
+    <node pkg="waterplus_map_tools" type="wp_navi_server" name="wp_navi_server" output="screen" />
+
+    <node pkg="waterplus_map_tools" type="wp_manager" name="wp_manager" output="screen" />
+</launch>
+```
+
+启动仿真环境
+
+```python
+roslaunch wpr_simulation wpb_stage_robocup.launch 
+```
+
+启动nav运动控制与rviz
+
+```
+roslaunch nav_pkg nav.launch 
+```
+
+启动航点发布与接收测试程序
+
+```
+rosrun waterplus_map_tools wp_nav_test 
+```
+
+发现机器人自动按航点运动
+
+
+
+自定义cpp多点导航：
+
+src/nav_pkg/src/wp_node.cpp
+
+```cpp
+#include <ros/ros.h>
+#include <std_msgs/String.h>
+
+void NavResultCallback(const std_msgs::String &msg)
+{
+    ROS_WARN("[NavResultCallback] %s",msg.data.c_str());
+}
+
+int main(int argc, char** argv)
+{
+    ros::init(argc, argv, "wp_node");
+
+    ros::NodeHandle n;
+    ros::Publisher nav_pub = n.advertise<std_msgs::String>("/waterplus/navi_waypoint", 10);
+    ros::Subscriber res_sub = n.subscribe("/waterplus/navi_result", 10 , NavResultCallback);
+
+    sleep(1);
+
+    std_msgs::String nav_msg;
+    nav_msg.data = "1";  //前往1号航点
+    nav_pub.publish(nav_msg);
+
+    ros::spin();
+    
+    return 0;
+}
+```
+
+修改cmakelists，编译；测试
+
+```
+roslaunch wpr_simulation wpb_stage_robocup.launch 
+```
+
+```
+roslaunch nav_pkg nav.launch 
+```
+
+```
+rosrun nav_pkg wp_node 
 ```
 
