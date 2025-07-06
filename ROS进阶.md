@@ -1029,6 +1029,12 @@ tf树输出机制
 
 <img src="pic_win/image-20250426152038418.png" alt="image-20250426152038418" style="zoom:50%;" />
 
+`map`话题（通常是`/map`）发布的是**实时构建的全局地图**，但它可以与**先验地图**配合使用。
+
+odom话题由fast_lio（数据来源是mid360激光雷达和imu）产生，计算出的机器人相对于起点的位姿轨迹
+
+`base_footprint`是一个坐标系，用于表示机器人当前位置
+
 amcl负责输出map-->odom的tf,里程计负责输出odom-->base_footprint的tf，切换本体和分身
 
 影分身替代本体，通过切换map-->odom的tf来实现跳变
