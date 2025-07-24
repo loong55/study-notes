@@ -1,3 +1,37 @@
+## ros提交源码实战
+
+```shell
+#初始化仓库
+git init
+#添加源码到暂存区
+git add src
+#提交
+git commit -m "第一次提交代码"
+#将暂存区所有文件剔除
+git reset
+
+#查看提交日志
+git log
+```
+
+利用.gitignore忽略提交的文件,编辑.gitignore文件
+
+```shell
+build/
+install/
+log/
+*.log
+```
+
+提交
+
+```shell
+git add .gitignore
+git commit -m "添加Git忽略文件"
+```
+
+
+
 # 图形化操作
 
 **windows下的操作**
