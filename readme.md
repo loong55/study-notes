@@ -2,8 +2,6 @@
 
 此仓库是本人的学习记录
 
-## 研零阶段	2024.05.01~2024.08.31
-
 Linux基础知识、熟悉ubuntu系统
 
 markdown语法与Typora软件
@@ -17,6 +15,10 @@ python语言
 git操作
 
 ros理论与实践
+
+docker
+
+ros2
 
 
 
