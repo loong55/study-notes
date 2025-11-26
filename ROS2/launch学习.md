@@ -509,4 +509,4 @@ source install/setup.bash  # 加载环境变量，让ROS识别新配置的文件
 4.  **编译配置关键**：在`setup.py`的`data_files`中配置 Launch、RViz、YAML 的路径，否则 ROS 找不到文件。
     
 
-掌握这些内容，就能应对 90% 以上的 ROS 节点启动场景，后续复杂系统（如导航、SLAM）的 Launch 文件也只是在此基础上扩展
+掌握这些内容，就能应对 90% 以上的 ROS 节点启动场景，后续复杂系统（如导航、SLAM）的 Launch 文件也只是在此基础上扩展f
