@@ -3553,3 +3553,52 @@ def func():
     return ...    
 ```
 
+斐波那契数列：1 1 2 3 5 8 13 21 34 ......
+
+n=0,1时，f(n) = 1;
+
+n >1时，f(n) = f(n-1) + f(n-2)
+
+```python
+def f(n):
+    if n==1 or n==0:
+        return 1
+    return f(n-1)+f(n-2)
+for i in range(9):
+    print(f(i))
+```
+
+
+
+##### 列表推导式
+
+一种简洁的方式来创建列表。它通常用于根据现有列表，通过某种操作来生成新的列表
+
+```python
+[表达式 for 变量 in 序列 if 条件]
+```
+
+- `表达式`：用于生成新列表中每个元素的代码。
+- `变量`：用于在每次迭代中从序列中提取的元素。
+- `序列`：一个可迭代的对象，如列表、元组、字符串或生成器等。
+- `if 条件`：是可选的，用于过滤序列中的元素。
+
+```python
+numbers = [1, 2, 3, 4, 5]
+doubled = [x * 2 for x in numbers]
+print(doubled)  # 输出: [2, 4, 6, 8, 10]
+```
+
+```
+numbers = [1, 2, 3, 4, 5]
+squared_evens = [x**2 for x in numbers if x % 2 == 0]
+print(squared_evens)  # 输出: [4, 16]
+```
+
+```python
+list1 = [1, 2, 3]
+list2 = [4, 5, 6]
+sums = [x + y for x in list1 for y in list2]
+print(sums)  # 输出: [5, 6, 7, 6, 7, 8, 7, 8, 9]
+```
+

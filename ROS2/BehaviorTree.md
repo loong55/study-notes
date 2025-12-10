@@ -300,44 +300,43 @@ name可写可不写，我们必须先将自定义的树节点注册到中，然�
 ```cpp
 #include "behaviortree_cpp/bt_factory.h"
 
-// file that contains the custom nodes definitions
+// 包含自定义节点定义的文件
 #include "dummy_nodes.h"
 using namespace DummyNodes;
 
 int main()
 {
-    // We use the BehaviorTreeFactory to register our custom nodes
-  BehaviorTreeFactory factory;
+    // 我们使用 BehaviorTreeFactory 来注册我们的自定义节点
+    BehaviorTreeFactory factory;
 
-  // The recommended way to create a Node is through inheritance.
-  factory.registerNodeType<ApproachObject>("ApproachObject");
+    // 推荐的创建节点的方式是通过继承。
+    factory.registerNodeType<ApproachObject>("ApproachObject");
 
-  // Registering a SimpleActionNode using a function pointer.
-  // You can use C++11 lambdas or std::bind
-  factory.registerSimpleCondition("CheckBattery", [&](TreeNode&) { return CheckBattery(); });
+    // 使用函数指针注册一个 SimpleConditionNode。
+    // 你可以使用 C++11 的 lambda 表达式或 std::bind
+    factory.registerSimpleCondition("CheckBattery", [&](TreeNode&) { return CheckBattery(); });
 
-  //You can also create SimpleActionNodes using methods of a class
-  GripperInterface gripper;
-  factory.registerSimpleAction("OpenGripper", [&](TreeNode&){ return gripper.open(); } );
-  factory.registerSimpleAction("CloseGripper", [&](TreeNode&){ return gripper.close(); } );
+    // 你也可以使用类的方法来创建 SimpleActionNodes
+    GripperInterface gripper;
+    factory.registerSimpleAction("OpenGripper", [&](TreeNode&){ return gripper.open(); } );
+    factory.registerSimpleAction("CloseGripper", [&](TreeNode&){ return gripper.close(); } );
 
-  // Trees are created at deployment-time (i.e. at run-time, but only 
-  // once at the beginning). 
+    // 树是在部署时创建的（即在运行时，但只在开始时创建一次）。 
     
-  // IMPORTANT: when the object "tree" goes out of scope, all the 
-  // TreeNodes are destroyed
-   auto tree = factory.createTreeFromFile("./my_tree.xml");
+    // 重要提示：当 "tree" 对象离开作用域时，所有的
+    // TreeNodes 都会被销毁
+    auto tree = factory.createTreeFromFile("./my_tree.xml");
 
-  // To "execute" a Tree you need to "tick" it.
-  // The tick is propagated to the children based on the logic of the tree.
-  // In this case, the entire sequence is executed, because all the children
-  // of the Sequence return SUCCESS.
-  tree.tickWhileRunning();
+    // 要“执行”一个树，你需要“tick”它。
+    // tick 信号会根据树的逻辑传播到子节点。
+    // 在这个例子中，整个序列都被执行了，因为 Sequence
+    // 的所有子节点都返回了 SUCCESS。
+    tree.tickWhileRunning();
 
-  return 0;
+    return 0;
 }
 
-/* Expected output:
+/* 预期输出:
 *
   [ Battery: OK ]
   GripperInterface::open
@@ -468,8 +467,9 @@ public:
 #include "behaviortree_cpp/bt_factory.h"
 
 // file that contains the custom nodes definitions
+// dummy表示假设代码，无实际含义
 #include "dummy_nodes.h"
-using namespace DummyNodes;
+using namespace DummyNodes;//下面有SaySomething和ThinkWhatToSay
 
 int main()
 {  
@@ -482,7 +482,7 @@ int main()
   return 0;
 }
 
-/*  Expected output:
+/*Expected output:
   Robot says: hello
   Robot says: The answer is 42
 */
@@ -731,6 +731,50 @@ int main()
 
 首先创建 **MoveBaseAction** 的虚拟节点
 
+解释StatefulActionNode内部函数
+
+`StatefulActionNode` 有一个内部状态机，它决定了调用哪个方法。这个状态机由行为树引擎在每次 `tickRoot()` 或 `tickOnce()` 时驱动。
+
+1. **初始状态：IDLE (空闲)**
+
+   - 当行为树第一次执行到这个节点时，它处于 `IDLE` 状态。
+
+   - 行为树引擎会调用 `onStart()` 方法。
+
+   - **`onStart()` 的作用**：执行一次性的准备工作。在你的例子中，就是读取输入端口 `goal`，打印发送请求的日志，并设置一个“完成时间点”。
+
+   - ```
+     onStart()
+     ```
+
+     的返回值决定了节点的下一个状态：
+
+     - 如果返回 `SUCCESS` 或 `FAILURE`，节点直接完成，状态回到 `IDLE`，等待下一次被 tick。
+     - 如果返回 `RUNNING`，节点进入 `RUNNING` 状态。**这是关键！**
+
+2. **执行状态：RUNNING (运行中)**
+
+   - 只要节点处于 `RUNNING` 状态，在后续的每一次 tick 中，行为树引擎就**不会**再调用 `onStart()`。
+
+   - 取而代之，它会**重复调用 `onRunning()`** 方法。
+
+   - **`onRunning()` 的作用**：检查长时间运行的任务是否完成。在你的例子中，它每次被调用时都会检查当前时间是否超过了预设的 `_completion_time`。
+
+   - ```
+     onRunning()
+     ```
+
+     的返回值同样决定状态：
+
+     - 如果返回 `RUNNING`，节点保持 `RUNNING` 状态，下一次 tick 会继续调用 `onRunning()`。
+     - 如果返回 `SUCCESS` 或 `FAILURE`，节点任务完成，状态回到 `IDLE`。
+
+3. **中断状态：HALTED (中止)**
+
+   - 如果一个节点正在 `RUNNING`，但它的父节点（比如一个 `Sequence`）因为另一个子节点返回了 `FAILURE` 而不再需要它继续运行，或者被一个更高优先级的节点（比如 `Fallback` 或 `Parallel`）抢占，行为树引擎会强制中止这个节点。
+   - 引擎会调用 `onHalted()` 方法，让你有机会执行清理工作（比如取消一个真实的机器人移动请求）。
+   - 调用完 `onHalted()` 后，节点状态被重置为 `IDLE`。
+
 ```cpp
 // 目标位姿
 struct Pose2D
@@ -781,7 +825,7 @@ BT::NodeStatus MoveBaseAction::onStart()
          _goal.x, _goal.y, _goal.theta);
 
   //我们用这个计数器来模拟一个动作
-  //完成时间（220毫秒）
+  //完成时间（200毫秒）
   _completion_time = chr::system_clock::now() + chr::milliseconds(220);
 
   return BT::NodeStatus::RUNNING;//返回RUNNING状态
@@ -1451,6 +1495,7 @@ Robot says: 1.000000
 ### 核心概念：Logger 接口
 #### 1. 什么是 Logger？
 `Logger` 是一个可以附加到行为树上的组件。它的作用是**被动地监听**树中每一个节点的状态变化。
+
 *   **非侵入性**：你不需要修改你的节点代码或 XML 来使用 Logger。它像一个“窃听器”，在旁边默默记录一切，不影响树的正常运行。
 *   **观察者模式**：这实现了经典的观察者设计模式。行为树是“被观察者”，Logger 是“观察者”。当节点状态（如从 `IDLE` 变为 `RUNNING`）发生变化时，行为树会通知所有注册的 Logger。
 #### 2. Logger 的核心回调函数
@@ -1467,6 +1512,7 @@ virtual void callback(
 ### 核心工具：TreeObserver 类
 虽然你可以自己实现 `Logger` 接口来创建自定义的日志记录器（比如写入文件、发送到网络等），但 BT.CPP 提供了一个非常实用的内置实现：**`TreeObserver`**。
 `TreeObserver` 的主要目的不是记录详细的日志流，而是**收集和统计**每个节点的执行情况。
+
 #### 1. `TreeObserver` 收集什么数据？
 它为树中的每个节点维护一个 `NodeStatistics` 结构体：
 ```cpp
@@ -2620,7 +2666,7 @@ class SleepNode : public BT::StatefulActionNode
         return NodeStatus::RUNNING;
       }
     }
-    /// 当节点处于 RUNNING 状态时，每次 tick 都会调用此方法
+    // 当节点处于 RUNNING 状态时，每次 tick 都会调用此方法
     NodeStatus onRunning() override
     {
       if ( system_clock::now() >= deadline_ ) {
@@ -2668,6 +2714,7 @@ NodeStatus tick() override
 ### 5. 终极解决方案：客户端/服务器架构
 教程最后指出了实现复杂异步任务的最高级、最推荐的模式。
 这个模式的核心思想是：**行为树本身不执行任务，它只负责“决策”和“指挥”**。
+
 *   **行为树**：作为**客户端**。它只负责发送指令（如“开始移动”、“停止移动”）和查询状态（如“移动完成了吗？”）。
 *   **外部服务/进程**：作为**服务器**。它真正执行耗时任务（如路径规划、机器人控制）。
 **ROS 中的 ActionLib 就是这种模式的完美实现：**
@@ -2773,7 +2820,11 @@ void onHalted() {
 
 回退节点是行为树中实现“选择”逻辑的核心控制节点。
 
-这篇教程的核心是解释 `Fallback` 和 `ReactiveFallback` 这两种选择节点的区别，特别是它们在处理子节点返回 `RUNNING` 状态时的不同行为，这对于构建响应式系统至关重要。
+ `Fallback` 和 `ReactiveFallback` 核心区别在于：**当子节点返回“运行中”时，是否持续并立即地重新评估（Tick）所有已执行过的子节点**
+
+![deepseek_mermaid_20251207_4694b8](pic_win/deepseek_mermaid_20251207_4694b8.png)
+
+![deepseek_mermaid_20251207_a31f35](pic_win/deepseek_mermaid_20251207_a31f35.png)
 
 ### 1. Fallback 的核心概念与通用规则
 
@@ -2807,6 +2858,9 @@ void onHalted() {
 教程通过两个生动的例子来阐明它们的用途。
 #### `Fallback` 的应用场景：按顺序尝试不同方案
 **示例：尝试开门**
+
+![image-20251206011437749](pic_win/image-20251206011437749.png)
+
 ```xml
 <Fallback>
     <IsDoorOpen/>         <!-- 1. 检查门是否开着 -->
@@ -2825,6 +2879,9 @@ void onHalted() {
 ---
 #### `ReactiveFallback` 的应用场景：对条件变化做出反应
 **示例：角色睡眠**
+
+![image-20251206011625489](pic_win/image-20251206011625489.png)
+
 ```xml
 <ReactiveFallback>
     <AreYouRested/>       <!-- 1. 检查是否休息好了 -->
@@ -2833,6 +2890,7 @@ void onHalted() {
 </ReactiveFallback>
 ```
 **行为分析：**
+
 1.  `ReactiveFallback` 开始，`tick` `AreYouRested`，假设返回 `FAILURE`（没休息好）。
 2.  它接着 `tick` `Timeout`，然后 `tick` `Sleep`。`Sleep` 是一个异步动作，开始执行并返回 `RUNNING`。`ReactiveFallback` 也返回 `RUNNING`。
 3.  **关键点**：在角色睡眠期间，外部条件可能发生变化（比如，一个事件让角色瞬间“休息好了”）。
@@ -2854,97 +2912,96 @@ void onHalted() {
 
 ## 5.序列节点
 
-序列节点是行为树中实现“顺序执行”逻辑的核心控制节点，与 Fallback 互为补充。
 
-这篇教程的核心是解释 `Sequence`、`ReactiveSequence` 和 `SequenceWithMemory` 这三种序列节点的区别，特别是它们在处理子节点返回 `FAILURE` 和 `RUNNING` 状态时的不同行为模式。
 
-### 1. Sequence 的核心概念与通用规则
-教程首先定义了 `Sequence` 节点的共同目标：**按顺序 `tick` 所有子节点，只要它们都返回 `SUCCESS`。如果任何一个子节点返回 `FAILURE`，整个序列就会中止。**
-**它们共享以下基本规则：**
+序列节点是行为树中的**控制节点**，它按照顺序执行子节点，直到所有子节点都成功或某个子节点失败。
 
-1.  **初始化**：在开始 `tick` 第一个子节点之前，节点自身的状态变为 `RUNNING`。
-2.  **处理成功**：如果一个子节点返回 `SUCCESS`，`Sequence` 会 `tick` 下一个子节点。
-3.  **全部成功**：如果最后一个子节点也返回了 `SUCCESS`，所有子节点都会被**中止**，`Sequence` 返回 `SUCCESS`。
-4.  **处理失败**：如果任何一个子节点返回 `FAILURE`，`Sequence` 会立即中止，中止所有其他子节点，并返回 `FAILURE`。
----
-### 2. 关键区别：如何处理 `FAILURE` 和 `RUNNING` 状态
-这是整篇教程的重点，也是三种序列节点的根本区别所在。
-| 控制节点类型             | 子节点返回 `FAILURE` 时的行为 | 子节点返回 `RUNNING` 时的行为 |
-| :----------------------- | :---------------------------- | :---------------------------- |
-| **`Sequence`**           | **重新开始**                  | **再次 Tick**                 |
-| **`ReactiveSequence`**   | **重新开始**                  | **重新开始**                  |
-| **`SequenceWithMemory`** | **再次 Tick**                 | **再次 Tick**                 |
-这里的术语需要精确理解：
-*   **“重新开始”**：意味着**整个序列节点会从头再来**。它会重新 `tick` 它的第一个子节点，然后是第二个，以此类推。
-*   **“再次 Tick”**：意味着序列节点**有“记忆”**。当它下一次被 `tick` 时，它会**直接 `tick` 那个上次返回了非 `SUCCESS` 状态的子节点**。那些已经返回 `SUCCESS` 的兄弟节点会被跳过，不会被重复 `tick`。
----
-### 3. 三种节点的具体应用场景
-教程通过三个生动的例子来阐明它们的用途。
-#### `Sequence` 的应用场景：标准顺序执行
-**示例：狙击手行为**
-```xml
-<Sequence>
-    <IsEnemyVisible/>     <!-- 1. 检查敌人是否可见 -->
-    <Aim/>                <!-- 2. 瞄准 -->
-    <Fire/>               <!-- 3. 开火 -->
-</Sequence>
+### 1. Sequence（普通序列）
+- **特点**：最常见的序列节点
+- **执行逻辑**：
+  - 按顺序执行子节点
+  - 所有子节点成功 → 序列成功
+  - 任一子节点失败 → **重启**（从头开始）
+  - 子节点返回RUNNING → 下次继续执行该子节点
+- **适用场景**：顺序执行的动作链
+
+**示例**：
 ```
-**行为分析：**
-
-1.  `Sequence` 开始，`tick` `IsEnemyVisible`。
-2.  如果返回 `SUCCESS`，`tick` `Aim`。
-3.  如果 `Aim` 返回 `SUCCESS`，`tick` `Fire`。
-4.  如果 `Fire` 返回 `SUCCESS`，整个 `Sequence` 返回 `SUCCESS`。
-5.  如果在 `Aim` 时敌人消失了（`IsEnemyVisible` 再次被 `tick` 时返回 `FAILURE`），`Sequence` 会**重新开始**，回到第一步检查敌人是否可见。
-**结论**：`Sequence` 适用于**必须严格按顺序执行，且每一步都可能失败需要重来的场景**。它的特点是：对失败**无记忆**，对运行中**有记忆**。
----
-#### `ReactiveSequence` 的应用场景：持续检查条件
-**示例：接近敌人**
-
-```xml
-<ReactiveSequence>
-    <IsEnemyVisible/>     <!-- 1. 持续检查敌人是否可见 -->
-    <ApproachEnemy/>      <!-- 2. 如果可见，则接近（异步动作） -->
-</ReactiveSequence>
+Sequence
+├── 检查弹药
+├── 瞄准目标
+└── 射击
 ```
-**行为分析：**
+如果"瞄准目标"失败，下一次执行会从"检查弹药"重新开始。
 
-1.  `ReactiveSequence` 开始，`tick` `IsEnemyVisible`（假设返回 `SUCCESS`），然后 `tick` `ApproachEnemy`。
-2.  `ApproachEnemy` 开始执行并返回 `RUNNING`。
-3.  **关键点**：在下一轮 `tick` 时，`ReactiveSequence` **会重新开始**。它会首先 `tick` `IsEnemyVisible`。
-4.  如果敌人突然躲起来了，`IsEnemyVisible` 返回 `FAILURE`。`ReactiveSequence` 立即中止，并返回 `FAILURE`。这会导致 `ApproachEnemy` 被**中断**。
-5.  如果敌人仍然可见，`IsEnemyVisible` 返回 `SUCCESS`，`ReactiveSequence` 会继续 `tick` `ApproachEnemy`。
-**结论**：`ReactiveSequence` 适用于**需要在一个长时间动作执行期间，持续监控前置条件**的场景。只要条件不满足，动作就会被立即中断。它的特点是：对失败和运行中**都无记忆**，每次都从头开始。
----
-#### `SequenceWithMemory` 的应用场景：带记忆的顺序执行
-**示例：巡逻机器人**
-```xml
-<SequenceWithMemory>
-    <GoTo location="A"/>    <!-- 1. 前往A点 -->
-    <GoTo location="B"/>    <!-- 2. 前往B点 -->
-    <GoTo location="C"/>    <!-- 3. 前往C点 -->
-</SequenceWithMemory>
+### 2. ReactiveSequence（反应式序列）
+- **特点**：每次tick都重新评估所有条件
+- **执行逻辑**：
+  - 子节点失败 → **重启**（从头开始）
+  - 子节点返回RUNNING → **重启**（从头开始）
+  - 每次tick都会重新检查之前的条件
+- **适用场景**：需要持续监控条件的场景
+
+**示例**：
 ```
-**行为分析：**
+ReactiveSequence
+├── 敌人是否可见？(条件)
+└── 接近敌人 (动作)
+```
+即使"接近敌人"动作正在进行中，如果"敌人是否可见"条件变为false，会立即停止动作并重启序列。
 
-1.  机器人成功前往A点，`GoTo(A)` 返回 `SUCCESS`。`SequenceWithMemory` 记住了这个成功。
-2.  在前往B点时，假设机器人被卡住了，`GoTo(B)` 返回 `FAILURE`。
-3.  在下一轮 `tick` 时，`SequenceWithMemory` **不会**重新去A点，而是**直接再次 `tick` `GoTo(B)`**，尝试从失败中恢复。
-4.  如果 `GoTo(B)` 最终成功，它会继续 `tick` `GoTo(C)`。
-**结论**：`SequenceWithMemory` 适用于**执行一系列一次性任务，并且希望从失败点恢复，而不是从头开始**的场景。它的特点是：对成功**有记忆**，对失败和运行中**也有记忆**。
----
-### 总结与最佳实践
-| 节点类型                 | 对 `SUCCESS` 的记忆 | 对 `FAILURE` 的记忆 | 对 `RUNNING` 的记忆 | 典型用例                                 |
-| :----------------------- | :------------------ | :------------------ | :------------------ | :--------------------------------------- |
-| **`Sequence`**           | 无                  | 无                  | 有                  | 标准的、需要重头再来的顺序流程。         |
-| **`ReactiveSequence`**   | 无                  | 无                  | 无                  | 持续监控条件的动作，条件不满足立即中断。 |
-| **`SequenceWithMemory`** | **有**              | 有                  | 有                  | 执行一系列一次性任务，从失败点恢复。     |
-**核心决策指南：**
+### 3. SequenceWithMemory（带记忆的序列）
+- **特点**：记住已成功的子节点
+- **执行逻辑**：
+  - 子节点失败 → **继续执行该子节点**（不重启）
+  - 子节点返回RUNNING → **继续执行该子节点**
+  - 已成功的子节点不会被重新执行
+- **适用场景**：需要逐步完成的任务，即使中间失败
 
-*   当你的逻辑是“做完A，再做B，再做C，任何一步失败都得从A开始重来”时，用 `Sequence`。
-*   当你的逻辑是“只要条件满足，就一直做B，同时每时每刻都检查条件”时，用 `ReactiveSequence`。
-*   当你的逻辑是“做完A，再做B，再做C，B失败了就重试B，不用再去做A”时，用 `SequenceWithMemory`。
-在复杂的树结构中，这三种节点经常被组合使用，以实现精确的控制流。例如，教程最后的例子就用 `ReactiveSequence` 包裹 `SequenceWithMemory`，实现了“持续检查电池，同时按顺序访问路径点”的复合逻辑。
+**示例**：
+```
+SequenceWithMemory
+├── 前往地点A
+├── 前往地点B
+└── 前往地点C
+```
+如果"前往地点B"失败，下次继续尝试"前往地点B"，不会重新执行"前往地点A"。
+
+#### 记忆口诀
+
+| 节点类型           | 子节点失败 | 子节点RUNNING | 关键特点     |
+| ------------------ | ---------- | ------------- | ------------ |
+| Sequence           | 重启       | 继续          | 传统顺序执行 |
+| ReactiveSequence   | 重启       | 重启          | 持续检查条件 |
+| SequenceWithMemory | 继续       | 继续          | 记住成功节点 |
+
+#### 选择指南
+
+1. **选择Sequence**：当需要标准的顺序执行，且不需要频繁检查前置条件时
+2. **选择ReactiveSequence**：当需要持续监控条件，确保条件一直满足时
+3. **选择SequenceWithMemory**：当执行一系列独立步骤，且不希望重复已成功的步骤时
+
+#### 实际应用技巧
+
+1. **组合使用**：可以嵌套不同序列节点
+   ```yaml
+   ReactiveSequence  # 持续检查电池
+   ├── 电池是否正常？
+   └── SequenceWithMemory  # 执行巡逻任务
+       ├── 前往A点
+       ├── 前往B点
+       └── 前往C点
+   ```
+
+2. **异步动作处理**：
+   - ReactiveSequence适合监控异步动作的前置条件
+   - SequenceWithMemory适合处理可能失败的异步动作序列
+
+3. **性能考虑**：
+   - ReactiveSequence可能更频繁调用子节点
+   - SequenceWithMemory可以减少不必要的节点执行
+
+掌握这三种序列节点的区别，能让你更精确地控制行为树的执行逻辑！
 
 # 与ROS2集成
 
@@ -3166,4 +3223,55 @@ factory.registerNodeType<FibonacciAction>("Fibonacci", params);
 2.  **概念清晰**：区分 `TreeNode` 和 `rclcpp::Node`，`BT::Action` 和 `rclcpp_action`。
 3.  **异步优先**：优先使用 ROS2 Action 来实现耗时任务，因为它与 BT.CPP 的异步模型天生匹配。
 4.  **封装之美**：通过继承 `RosActionNode` 或 `RosServiceNode`，可以创建出简洁、非阻塞、可中止的 `TreeNode`，将复杂的 ROS 通信细节封装在基类中，让开发者专注于业务逻辑。
+
+
+
+# 节点总结
+
+## 1.回退与序列节点
+
+### 📋 行为树核心节点对比表
+
+| 节点类型                                | 核心逻辑                                         | 对 **“失败”** 的反应                               | 对 **“运行中”** 的反应                               | **中断行为**                                                 | 典型使用场景                                                 |
+| :-------------------------------------- | :----------------------------------------------- | :------------------------------------------------- | :--------------------------------------------------- | :----------------------------------------------------------- | :----------------------------------------------------------- |
+| **`Fallback`** <br>(回退/选择器)        | **顺序尝试**，直到一个子节点**成功**。           | 立即停止并尝试**下一个**子节点。                   | 下一 Tick **直接继续**执行该“运行中”的节点。         | 不中断。                                                     | 实现清晰的**优先级备选策略**（如：尝试开门 → 失败则尝试破窗）。 |
+| **`ReactiveFallback`** <br>(反应式回退) | **顺序尝试，但持续监视**所有已尝试子节点的状态。 | 立即停止并尝试**下一个**子节点。                   | **每个Tick都从头重新评估**所有子节点。               | **激进**。若高优先级节点条件满足，**立即中断**当前节点。     | 实现**高优先级打断**（如：平时巡逻，一旦发现火情**立即**中断巡逻去灭火）。 |
+| **`Sequence`** <br>(序列)               | **顺序执行**，要求所有子节点**全部成功**。       | 任一子节点失败，**整个序列立即失败**。             | 下一 Tick **直接继续**执行该“运行中”的节点。         | 不中断。                                                     | 执行**步骤固定、连贯的流程**（如：走到A点 → 拿起物品 → 返回）。 |
+| **`ReactiveSequence`** <br>(反应式序列) | 顺序执行，但**每Tick都从头重新评估**已执行节点。 | 任一子节点失败，**整个序列立即失败**。             | **每个Tick都从头重新评估**，即使后续节点在“运行中”。 | **激进**。若前面节点失败，**立即中断**当前正在运行的后续节点。 | 执行**安全性要求高、需持续监控**的流程（如：检查电量 → 启动电机 → 执行任务，电量不足则立刻停止）。 |
+| **`SequenceWithMemory`** <br>(记忆序列) | 顺序执行，但**会记住上次失败的位置**。           | 某一子节点失败，**记住该点后停止**，返回“运行中”。 | 下一 Tick **直接继续**执行该“运行中”的节点。         | 不中断。                                                     | 执行**可跳过失败步骤**的弹性流程（如：尝试开门 → 失败则下次跳过，直接尝试敲窗）。 |
+| **`Parallel`** <br>(并行)               | **同时执行**所有子节点。                         | 根据成功/失败阈值（如M/N）决定自身成功或失败。     | 所有子节点**并发执行**，互不阻塞。                   | **可配置**。可设置条件在部分子节点失败时中断其他。           | 处理**真正并行的多任务**（如：导航移动 与 播放状态语音 **同时进行**）。 |
+
+### 🧭 快速选择决策流程图
+当您在具体设计中不确定该用哪个节点时，可以遵循下图的决策路径：
+
+![deepseek_mermaid_20251207_e73380](pic_win/deepseek_mermaid_20251207_e73380.png)
+
+## 2.装饰器节点
+
+装饰器节点是行为树中用于**修饰、增强或改变单个子节点行为**的一类特殊节点。它们像一个“包装盒”，为内部子节点添加了额外的控制逻辑。
+
+### 📦 主要装饰器节点对比表
+
+| 装饰器节点                                           | 核心功能                             | 执行行为                                                     | 典型应用场景                                                 |
+| :--------------------------------------------------- | :----------------------------------- | :----------------------------------------------------------- | :----------------------------------------------------------- |
+| **`Repeat`** <br>(重复)                              | 将子节点重复执行指定次数。           | 重复执行子节点 N 次，或无限循环（`RepeatForever`）。子节点每次成功/失败都计入。通常自身在达到次数后返回**成功**。 | 让机器人**连续执行某个动作固定次数**，如“连续扫描3次”。      |
+| **`Retry`** <br>(重试)                               | 当子节点失败时，自动重试指定次数。   | 子节点失败后，自动重新执行它，最多重试 N 次。直到子节点成功或耗尽重试次数。通常用于**提高任务鲁棒性**。 | 网络请求、抓取操作等**可能偶然失败但值得重试**的任务。       |
+| **`Inverter`** <br>(取反)                            | 反转子节点的返回状态。               | 子节点返回 **Success** -> 装饰器返回 **Failure**。<br>子节点返回 **Failure** -> 装饰器返回 **Success**。<br>子节点返回 **Running** -> 装饰器返回 **Running**。 | 将条件检查“反着用”。例如，将 `IsBatteryLow`（电量低） 取反为 `IsBatteryOK`（电量正常）来作为执行条件。 |
+| **`ForceSuccess`** <br>(强制成功)                    | 无论子节点结果如何，都强制返回成功。 | 子节点返回 **Success/Failure/Running** -> 装饰器都返回 **Success** (对于Running，会先等待其结束)。 | 1. **忽略特定失败**：让一个不重要步骤的失败不影响主序列。<br>2. **调试阶段**：临时让某分支总为真。 |
+| **`ForceFailure`** <br>(强制失败)                    | 无论子节点结果如何，都强制返回失败。 | 子节点返回 **Success/Failure/Running** -> 装饰器都返回 **Failure** (对于Running，会先等待其结束)。 | 1. **禁用某个分支**：临时或条件性地禁用某个行为。<br>2. **触发回退机制**：主动让当前分支失败，以触发 `Fallback` 中的备选方案。 |
+| **`KeepRunningUntilFailure`** <br>(保持运行直至失败) | 让子节点一直运行，直到其返回失败。   | 只要子节点返回 **Success**，就**立刻再次Tick**它，使其保持运行状态。只有当它返回 **Failure** 时，装饰器才返回 **Failure**。 | 让一个**需要持续运行**的动作（如“巡逻”）一直进行，直到某个终止条件（如“电量低”）触发失败。 |
+| **`Timeout`** <br>(超时)                             | 为子节点的执行增加时间限制。         | 启动子节点并开始计时。若在指定时间内子节点返回**Success**或**Failure**，装饰器返回相同状态。**若超时，则立即中断子节点并返回Failure**。 | 为任何可能“卡住”的动作（如等待服务响应、寻找目标）增加**安全上限**，避免系统长期阻塞。 |
+
+### 🧠 核心特点与使用逻辑
+
+所有装饰器节点都有以下共同点：
+1.  **单一子节点**：每个装饰器有且仅有一个子节点。
+2.  **功能明确**：每个装饰器只负责一种特定的行为修饰。
+3.  **灵活组合**：装饰器可以**嵌套使用**（例如，用 `Timeout` 包装一个 `Retry`），也可以和控制节点（`Sequence`， `Fallback`）任意组合，构建出极其复杂而清晰的行为逻辑。
+
+为了帮助你根据目标快速选出合适的装饰器，可以参考以下决策思路：
+
+![deepseek_mermaid_20251207_bb8067](pic_win/deepseek_mermaid_20251207_bb8067.png)
+
+
 
