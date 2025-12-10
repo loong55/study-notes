@@ -4,7 +4,9 @@
 
 Linux基础知识、熟悉ubuntu系统
 
-markdown语法与Typora软件
+markdown语法与Typora软件、C语言
+
+stm32 江科大笔记
 
 C++基础语法、面向对象编程、STL标准库
 
@@ -19,6 +21,8 @@ ros理论与实践
 docker
 
 ros2
+
+BehaviorTree
 
 
 
