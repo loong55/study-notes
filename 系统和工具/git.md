@@ -508,8 +508,8 @@ gitee中有保护分支设置，这里，你可以选择仓库让谁可以进行
 第一步：创建SSH Key。在用户主目录下	C:\Users\ASUS\\.ssh	，看看有没有.ssh目录，如果有，再看看这个目录下有没有id\_rsa和id\_rsa.pub这两个文件，如果有的话，直接跳过此如下命令，如果没有的话，打开命令行，输入如下命令：
 
 ```bash
-ssh-keygen		#默认加密方式	然后一直按enter
-ssh-keygen -t rsa –C “你的邮箱@xxx.com”  # 手动输入，rsa 加密方式 然后一直按enter,
+ssh-keygen		#默认加密方式	然后一直按enter，如果选择此加密方式，下面哪行不用输入，
+ssh-keygen -t rsa –C “你的邮箱@xxx.com”  # 指定邮箱的加密方式手动输入，rsa 加密方式 然后一直按enter,
 
 cd ~/.ssh
 cat id_rsa.pub
