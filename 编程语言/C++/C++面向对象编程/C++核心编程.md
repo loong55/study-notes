@@ -1524,15 +1524,14 @@ public:
 	Person(int age ,int height) {		
 		cout << "有参构造函数!" << endl;
 		m_age = age;
-		m_height = new int(height);//栈区申请内存	
+		m_height = new int(height);//堆区申请内存	
 	}
 	//拷贝构造函数  
 	Person(const Person& p) {
 		cout << "拷贝构造函数!" << endl;
-		//如果不利用深拷贝在堆区创建新内存，会导致浅拷贝带来的重复释放堆区问题
+		//如果不利用深拷贝在堆区创建新内存，会导致浅拷贝带来的重复析构，释放堆区，导致程序崩溃
 		m_age = p.m_age;
 		m_height = new int(*p.m_height);//堆区开辟新内存，存放身高
-        //堆区，数据像土堆一样，先进，后出来，所以析构先析构拷贝数据，再析构原始数据		
 	}
 
 	//析构函数
@@ -2391,7 +2390,7 @@ int main() {
 ```C++
 class Person {
 	friend ostream& operator<<(ostream& out, Person& p);
-    //friend 输出流类 函数名 （传入数据）
+    //friend 输出流类 函数名（传入数据）
 public:
 	Person(int a, int b)
 	{
@@ -2984,7 +2983,7 @@ B 类称为父类 或 基类
 
 
 
-
+**继承方式，会把基类成员的访问权限“降级”，但不能“升级”。**
 
 **示例：**
 
