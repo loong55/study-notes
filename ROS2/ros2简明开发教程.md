@@ -1,7 +1,3 @@
-## DX-ROS教程
-
-from **西安交通大学笃行机器人队**
-
 ## **认识ROS**
 
 ### 什么是ROS？一个生动的比喻
@@ -112,7 +108,6 @@ ROS2的编程是其核心，主要涉及创建节点（Node）、话题（Topic�
 -   **参数 (Parameters)**: 用于在启动时或运行时配置节点的变量。
 
 1.  **学习步骤**:  
-    
 
 -   **环境搭建**: 首先，按照ROS2官方文档的指引，在你的操作系统（推荐Ubuntu）上安装ROS2。
 -   **工作空间 (Workspace)**: 学会创建和管理你的工作空间，这是存放和编译ROS2功能包（Packages）的地方。
@@ -166,13 +161,11 @@ ROS2的命令行工具是日常开发、调试和检查系统状态不可或缺�
 -   **交互**: 可以在Rviz2中设置导航目标点、显示地图等。
 
 1.  **rqt\_graph**:  
-    
 
 -   **简介**: 这是一个用于可视化ROS2计算图（Computation Graph）的工具。
 -   **功能**: 它可以清晰地展示出当前系统中所有正在运行的节点、话题、服务及其相互之间的连接关系。当你感觉系统中的数据流向混乱时，`rqt_graph` 是一个绝佳的梳理工具。
 
 1.  **其他rqt工具**:  
-    
 
 -   `rqt_plot`: 用于实时绘制话题中发布的数据（例如，绘制电机速度或传感器读数随时间变化的曲线）。
 -   `rqt_console`: 用于查看和过滤所有节点的日志输出（Debug, Info, Warn, Error）。
@@ -1140,11 +1133,10 @@ ROS 2的强大之处在于其分布式特性。你可以轻松地让多个节点
 1.  **History (历史记录)**:  
     
 
--   `KEEP_LAST`: 只保留最新的N条数据。N由`Depth`选项指定。适用于状态类数据，如传感器读数，你只关心最新的值。
+-   `KEEP_LAST`: 只保留最新的N条数据。N由`Depth`选项指定。==适用于状态类数据==，如传感器读数，你只关心最新的值。
 -   `KEEP_ALL`: 保留所有历史数据，直到资源耗尽。适用于需要确保不丢失任何一条消息的场景，如录制数据。
 
 1.  **Depth (深度)**:  
-    
 
 -   与 `KEEP_LAST` 结合使用，指定队列的大小。例如 `Depth=10` 表示最多保留最近的10条消息。
 
@@ -1155,7 +1147,6 @@ ROS 2的强大之处在于其分布式特性。你可以轻松地让多个节点
 -   `RELIABLE` (可靠): 保证送达，会进行重传尝试。适用于绝对不能丢失的指令，如机器人移动的`cmd_vel`指令、重要的服务调用。可靠传输会增加一些延迟和网络开销。
 
 1.  **Durability (持久性)**:  
-    
 
 -   `VOLATILE` (易失): 只将消息发送给当前已经连接的订阅者。如果订阅者在消息发布后才启动，它将收不到这条消息。
 -   `TRANSIENT_LOCAL` (瞬态本地): 发布者会“保留”最新发布的消息。当一个新的订阅者连接上时，发布者会立刻将这些“陈旧”的消息发送给它。非常适用于配置信息或地图数据，这样后启动的节点也能立即获取到最新的配置或地图。
@@ -1539,7 +1530,6 @@ ament_package()
 -   `ament_cmake` 是构建ROS2 C++包所必需的，必须首先找到它。
 
 1.  **`add_executable(可执行文件名 源文件...)`**:  
-    
 
 -   为你的C++源文件创建一个可执行文件。
 -   第一个参数 `my_node` 是生成的可执行文件的名称。
@@ -1553,7 +1543,6 @@ ament_package()
 -   引用的依赖包名称必须与 `find_package` 中的名称一致（用引号括起来）。
 
 1.  **`install(TARGETS ...)`**:  
-    
 
 -   将编译生成的可执行文件安装到ROS2环境能够找到它的地方（`install/my_robot_controller/lib/my_robot_controller/`）。
 -   `DESTINATION lib/${PROJECT_NAME}` 是ROS2 C++节点的标准安装路径。
@@ -1565,7 +1554,6 @@ ament_package()
 -   `DESTINATION share/${PROJECT_NAME}` 是这些文件的标准安装路径。
 
 1.  **`ament_package()`**:  
-    
 
 -   文件末尾的必需命令，用于处理所有 `install()` 命令并完成打包。
 
@@ -1672,7 +1660,6 @@ setup(
 -   在 `CMakeLists.txt` (使用 `install(DIRECTORY ...)` ) 或 `setup.py` (在 `data_files` 中添加条目) 中配置安装规则。
 
 1.  **构建和测试**:  
-    
 
 -   回到工作区的根目录，运行 `colcon build --packages-select <你的包名>`。
 -   `source install/setup.bash`。
@@ -2014,59 +2001,4 @@ rqt_graph
 -   **TF2**: 看不见的“骨架”，负责连接所有空间数据，让Rviz2和其他节点知道每个物体、每个传感器数据在空间中的确切位置和姿态。
 -   **RQT**: 你的“仪表盘和示波器”，用于监控系统的内部数据流、绘制2D数据曲线、检查节点连接状态。是系统级调试和数据分析的核心。
 
-## **任务**
-
-### **1\. 项目目标**
-
-可以在海康威视的官网找到MVS C++ SDK。你需要使用**ROS2-Humble**对现有的SDK进行“改造”，即进行封装，开发一个功能完善、性能稳定、易于使用的ROS2功能包（Package）。最终目标是让任何ROS2开发者可以轻松地在项目中使用海康相机，获取图像数据并控制相机基础参数。
-
-> _注意，这不仅是在考核你对ROS2框架的掌握程度，也在考验你查找信息和资料的能力_ _**这在开发以ROS为框架的程序上是非常重要的！**_ _**可以基于海康MVS的SDK进行二次开发，禁止照抄其他开源**_
-
-### **2\. 核心功能要求**
-
--   **节点与设备连接:**  
-    
--   创建一个ROS2节点，该节点能够通过SDK自动发现并连接到指定IP地址或序列号的海康相机。
--   支持相机的断线重连。
-
--   **图像数据发布:**  
-    
--   稳定地从相机采集图像数据，在默认分辨率下达到尽量高的帧率。
--   将采集到的图像数据转换为标准的ROS2消息格式 `sensor_msgs/msg/Image`。
--   将图像数据发布到可配置的Topic上（例如 `/image_raw`）。
-
--   **相机参数配置:**  
-    
--   通过ROS2参数（Parameter Server）系统，实现对相机常用参数的动态读取和设置。至少应包括：  
-    
--   曝光时间 (Exposure Time)
--   增益 (Gain)
--   帧率 (Frame Rate)
--   图像格式 (Pixel Format)
-
-### **3\. 交付产物**
-
--   一个完整的、可编译的ROS2功能包的源代码（通过Git仓库交付）。
--   清晰的 `README.md` 文档，说明如何配置、编译和运行该节点。
--   一个或多个 `launch` 文件，用于方便地启动相机节点并配置基本参数。
-
-### **4\. 验收标准**
-
--   代码能够通过 `colcon build` 成功编译，无任何错误和严重警告。
--   代码如果依赖外部库，需要能使用`rosdep`进行一键配置。
--   启动launch文件后，相机节点能成功连接相机并进行图片采集。
--   在 `rviz2` 中可以稳定地查看到相机发布的 `/image_raw` 话题，图像显示正常。
--   可以通过命令行或代码设置ROS2参数，并能正确反映到相机的实际成像效果上。
--   可选: 进行线下验收。
-
-## **友链**
-
-关注XJTU-RMV喵 [https://github.com/XJTU-RMV](https://link.zhihu.com/?target=https%3A//github.com/XJTU-RMV)
-
-## **鸣谢**
-
-感谢老学长对笔者的的指点喵 [https://github.com/LiZhuoran2003](https://link.zhihu.com/?target=https%3A//github.com/LiZhuoran2003)
-
-感谢以下贡献者(不完全统计) [https://github.com/Axi404](https://link.zhihu.com/?target=https%3A//github.com/Axi404) [https://github.com/DYZ0401](https://link.zhihu.com/?target=https%3A//github.com/DYZ0401) [https://github.com/Oner-Z](https://link.zhihu.com/?target=https%3A//github.com/Oner-Z) [https://github.com/Ovalene2333](https://link.zhihu.com/?target=https%3A//github.com/Ovalene2333) [https://github.com/yan-xiaoo](https://link.zhihu.com/?target=https%3A//github.com/yan-xiaoo) [https://github.com/ZeroHour-Z](https://link.zhihu.com/?target=https%3A//github.com/ZeroHour-Z) [https://github.com/zyfan42](https://link.zhihu.com/?target=https%3A//github.com/zyfan42)
-
-> _后续笔者还会更新导航的教程和代码开源喵！_ _学习红米的精神，**不调好不发布,调好了再发布**喵！_
+> 
