@@ -1787,6 +1787,7 @@ int main() {
 * back返回容器最后一个元素
 #### 3.2.7 vector互换容器
 **功能描述：**
+
 * 实现两个容器内元素进行互换
 **函数原型：**
 * `swap(vec);`  // 将vec与本身的元素互换
@@ -1900,6 +1901,7 @@ deque内部有个**中控器**，维护每段缓冲区中的内容，缓冲区�
 * deque容器的迭代器也是支持随机访问的
 #### 3.3.2 deque构造函数
 **功能描述：**
+
 * deque容器构造
 **函数原型：**
 * `deque<T>` deqT;                      //默认构造形式
@@ -1941,8 +1943,10 @@ int main() {
 }
 ```
 **总结：**deque容器和vector容器的构造方式几乎一致，灵活使用即可
+
 #### 3.3.3 deque赋值操作
 **功能描述：**
+
 * 给deque容器进行赋值
 **函数原型：**
 * `deque& operator=(const deque &deq); `         //重载等号操作符
@@ -2142,6 +2146,7 @@ int main() {
 * 头删   ---  pop_front
 #### 3.3.6 deque 数据存取
 **功能描述：**
+
 * 对deque 中的数据的存取操作
 **函数原型：**
 - `at(int idx); `     //返回索引idx所指的数据
@@ -2396,6 +2401,7 @@ int main() {
 #### 3.6.2 queue 常用接口
 功能描述：栈容器常用的对外接口
 构造函数：
+
 - `queue<T> que;`                                 //queue采用模板类实现，queue对象的默认构造形式
 - `queue(const queue &que);`            //拷贝构造函数
 赋值操作：
@@ -3026,6 +3032,7 @@ int main() {
 * 交换容器   --- swap
 #### 3.8.4 set插入和删除
 **功能描述：**
+
 * set容器进行插入数据和删除数据
 **函数原型：**
 * `insert(elem);`           //在容器中插入元素。
@@ -3076,6 +3083,7 @@ int main() {
 * 清空   --- clear
 #### 3.8.5 set查找和统计
 **功能描述：**
+
 * 对set容器进行查找数据以及统计数据
 **函数原型：**
 * `find(key);`                  //查找key是否存在,若存在，返回该键的元素的迭代器；若不存在，返回set.end();
@@ -3166,6 +3174,7 @@ int main() {
 * 如果需要插入重复数据利用multiset
 #### 3.8.7 pair对组创建
 **功能描述：**
+
 * 成对出现的数据，利用对组可以返回两个数据
 **两种创建方式：**
 * `pair<type, type> p ( value1, value2 );`
@@ -3302,7 +3311,7 @@ int main() {
 * pair中第一个元素为key（键值），起到索引作用，第二个元素为value（实值）
 * ==所有元素都会根据元素的键值自动排序==
 **本质：**
-* map/multimap属于**关联式容器**，底层结构是用二叉树实现。
+* map/multimap属于**关联式容器**，底层结构是用==二叉树实现==。
 **优点：**
 * 可以根据key值快速找到value值
 map和multimap**区别**：
@@ -3507,6 +3516,7 @@ int main() {
 - 清空   --- clear
 #### 3.9.5 map查找和统计
 **功能描述：**
+
 - 对map容器进行查找数据以及统计数据
 **函数原型：**
 - `find(key);`                  //查找key是否存在,若存在，返回该键的元素的迭代器；若不存在，返回set.end();
@@ -3719,10 +3729,463 @@ int main() {
 ```
 总结：
 * 当数据以键值对形式存在，可以考虑用map 或 multimap
+
+### 3.11 unordered_map / unordered_multimap 容器
+
+#### 3.11.1 基本概念
+
+**功能描述：**
+- `unordered_map` 存储键值对（key-value），键唯一。
+- `unordered_multimap` 允许键重复。
+- 底层基于**哈希表**实现，元素**不会自动排序**。
+- 平均查找、插入、删除时间复杂度为 **O(1)**，最坏情况（大量哈希冲突）退化为 **O(n)**。
+
+**与 map 的区别：**
+
+- `map` 底层是红黑树，自动按 key 排序，查找 O(log n)。
+- `unordered_map` 底层是哈希表，无序，平均 O(1)。
+
+**头文件：** `#include <unordered_map>`
+
+#### 3.11.2 构造函数
+
+**函数原型：**
+- `unordered_map<Key, T> mp;` // 默认构造
+- `unordered_map<Key, T> mp(const unordered_map &m);` // 拷贝构造
+- `unordered_map<Key, T> mp(beg, end);` // 区间构造
+
+**示例：**
+```cpp
+#include <unordered_map>
+#include <string>
+#include <iostream>
+using namespace std;
+
+void test01() {
+    unordered_map<int, string> m1;
+    m1.insert(make_pair(1, "one"));
+    m1.insert(make_pair(2, "two"));
+    m1.insert(make_pair(3, "three"));
+
+    unordered_map<int, string> m2(m1); // 拷贝构造
+    unordered_map<int, string> m3(m1.begin(), m1.end()); // 区间构造
+}
+```
+
+#### 3.11.3 赋值操作
+
+**函数原型：**
+- `unordered_map& operator=(const unordered_map &m);`
+- `swap(m);` // 交换两个容器
+
+**示例：**
+```cpp
+void test02() {
+    unordered_map<int, string> m1;
+    m1[1] = "one";
+    m1[2] = "two";
+
+    unordered_map<int, string> m2;
+    m2 = m1; // 赋值
+    m2.swap(m1); // 交换
+}
+```
+
+#### 3.11.4 大小和交换
+
+**函数原型：**
+- `size();` // 返回元素个数
+- `empty();` // 判断是否为空
+- `swap(m);` // 交换容器
+
+#### 3.11.5 插入和删除
+
+**函数原型：**
+- `insert(elem);` // 插入键值对
+- `erase(pos);` // 删除迭代器指向的元素
+- `erase(key);` // 删除键为 key 的元素
+- `clear();` // 清空
+
+**示例：**
+```cpp
+void test03() {
+    unordered_map<int, string> m;
+    // 四种插入方式
+    m.insert(pair<int, string>(1, "one"));
+    m.insert(make_pair(2, "two"));
+    m.insert(unordered_map<int, string>::value_type(3, "three"));
+    m[4] = "four"; // 下标插入
+
+    m.erase(2); // 按 key 删除
+    m.erase(m.begin()); // 按迭代器删除
+    m.clear(); // 清空
+}
+```
+
+#### 3.11.6 查找和统计
+
+**函数原型：**
+- `find(key);` // 查找 key，返回迭代器，找不到返回 end()
+- `count(key);` // 统计 key 的个数（unordered_map 中为 0 或 1）
+
+**示例：**
+
+```cpp
+void test04() {
+    unordered_map<int, string> m;
+    m[1] = "one";
+    m[2] = "two";
+
+    auto it = m.find(1);
+    if (it != m.end()) {
+        cout << "找到 key=" << it->first << " value=" << it->second << endl;
+    }
+    cout << "key=1 的个数：" << m.count(1) << endl;
+}
+```
+
+#### 3.11.7 总结
+
+- `unordered_map` / `unordered_multimap` 基于哈希表，元素无序。
+- 平均查找、插入、删除为 O(1)，最坏 O(n)。
+- 适用于需要快速查找且不关心顺序的场景。
+- `unordered_multimap` 允许键重复，用法与 `unordered_map` 类似。
+
+---
+
+### 3.12 unordered_set / unordered_multiset 容器
+
+#### 3.12.1 基本概念
+
+**功能描述：**
+- `unordered_set` 存储唯一元素，`unordered_multiset` 允许重复元素。
+- 底层基于**哈希表**，元素**无序**。
+- 平均查找、插入、删除为 **O(1)**，最坏 O(n)。
+
+**与 set 的区别：**
+- `set` 基于红黑树，自动排序，查找 O(log n)。
+- `unordered_set` 基于哈希表，无序，平均 O(1)。
+
+**头文件：** `#include <unordered_set>`
+
+#### 3.12.2 常用接口
+
+**构造：**
+- `unordered_set<T> s;`
+- `unordered_set<T> s(beg, end);`
+- `unordered_set<T> s(const unordered_set &s);`
+
+**赋值：**
+- `operator=`
+- `swap(s);`
+
+**大小：**
+- `size();` `empty();`
+
+**插入和删除：**
+- `insert(elem);`
+- `erase(pos);` `erase(elem);` `clear();`
+
+**查找和统计：**
+- `find(key);`
+- `count(key);` // 对于 unordered_set，结果为 0 或 1；unordered_multiset 可大于 1。
+
+**示例：**
+
+```cpp
+#include <unordered_set>
+#include <iostream>
+using namespace std;
+
+void test01() {
+    unordered_set<int> s;
+    s.insert(10);
+    s.insert(30);
+    s.insert(20);
+    s.insert(10); // 重复插入失败
+
+    for (auto it = s.begin(); it != s.end(); it++) {
+        cout << *it << " "; // 输出顺序不确定
+    }
+    cout << endl;
+
+    auto pos = s.find(20);
+    if (pos != s.end()) {
+        cout << "找到了：" << *pos << endl;
+    }
+    cout << "20 的个数：" << s.count(20) << endl;
+
+    s.erase(30);
+    s.clear();
+}
+```
+
+#### 3.12.3 总结
+
+- `unordered_set` / `unordered_multiset` 基于哈希表，元素无序。
+- 平均 O(1) 的查找、插入、删除性能。
+- 适用于快速判断元素是否存在，且不要求有序。
+- `unordered_multiset` 允许重复元素。
+
+---
+
+### 3.13 priority_queue 容器
+
+#### 3.13.1 基本概念
+
+**功能描述：**
+- `priority_queue` 是容器适配器，默认底层容器为 `vector`，使用**二叉堆**维护元素顺序。
+- 总是能快速访问**最高优先级**元素（默认最大堆）。
+- 不支持随机访问和遍历。
+
+**头文件：** `#include <queue>`
+
+#### 3.13.2 常用接口
+
+**构造函数：**
+
+- `priority_queue<T> pq;` // 默认最大堆
+- `priority_queue<T, Container, Compare> pq;` // 自定义底层容器和比较方式
+
+**数据存取：**
+
+- `push(elem);` // 插入元素，O(log n)
+- `pop();` // 删除堆顶元素，O(log n)
+- `top();` // 返回堆顶元素，O(1)
+
+**大小操作：**
+- `empty();` // 判断是否为空
+- `size();` // 返回元素个数
+
+**示例：**
+
+```cpp
+#include <queue>
+#include <iostream>
+#include <vector>
+#include <functional>
+using namespace std;
+
+void test01() {
+    // 默认最大堆
+    priority_queue<int> maxHeap;
+    maxHeap.push(10);
+    maxHeap.push(30);
+    maxHeap.push(20);
+
+    while (!maxHeap.empty()) {
+        cout << maxHeap.top() << " "; // 30 20 10
+        maxHeap.pop();
+    }
+    cout << endl;
+
+    // 最小堆
+    priority_queue<int, vector<int>, greater<int>> minHeap;
+    minHeap.push(30);
+    minHeap.push(10);
+    minHeap.push(20);
+
+    while (!minHeap.empty()) {
+        cout << minHeap.top() << " "; // 10 20 30
+        minHeap.pop();
+    }
+    cout << endl;
+}
+```
+
+#### 3.13.3 总结
+
+- `priority_queue` 是容器适配器，默认使用 `vector` 和二叉堆。
+- 插入和删除 O(log n)，访问堆顶 O(1)。
+- 默认最大堆，可用 `greater<T>` 改为最小堆。
+- 不支持遍历和随机访问。
+
+---
+
+### 3.14 forward_list 容器
+
+#### 3.14.1 基本概念
+
+**功能描述：**
+
+- `forward_list` 是**单向链表**，只支持前向迭代。
+- 插入和删除 O(1)，比 `list` 更节省空间（每个节点只保存一个指针）。
+- 不支持随机访问，不能反向遍历。
+- 没有 `size()` 成员函数（C++11），可用 `std::distance` 计算。
+
+**头文件：** `#include <forward_list>`
+
+#### 3.14.2 构造函数
+
+**函数原型：**
+- `forward_list<T> fl;`
+- `forward_list<T> fl(beg, end);`
+- `forward_list<T> fl(n, elem);`
+- `forward_list<T> fl(const forward_list &fl);`
+
+**示例：**
+```cpp
+#include <forward_list>
+#include <iostream>
+using namespace std;
+
+void test01() {
+    forward_list<int> fl1;
+    fl1.push_front(10);
+    fl1.push_front(20);
+    fl1.push_front(30); // 30 20 10
+
+    forward_list<int> fl2(fl1.begin(), fl1.end());
+    forward_list<int> fl3(5, 100); // 5 个 100
+    forward_list<int> fl4(fl1);
+}
+```
+
+#### 3.14.3 赋值和交换
+
+- `assign(beg, end);`
+- `assign(n, elem);`
+- `operator=`
+- `swap(fl);`
+
+#### 3.14.4 大小操作
+
+- `empty();`
+- 没有 `size()`，可用 `distance(fl.begin(), fl.end())`。
+- `resize(num);` `resize(num, elem);`
+
+#### 3.14.5 插入和删除
+
+**函数原型：**
+- `push_front(elem);` // 头部插入
+- `pop_front();` // 头部删除
+- `insert_after(pos, elem);` // 在 pos 后插入
+- `insert_after(pos, n, elem);`
+- `insert_after(pos, beg, end);`
+- `erase_after(pos);` // 删除 pos 后的元素
+- `erase_after(beg, end);`
+- `clear();`
+- `remove(elem);` // 删除所有匹配元素
+
+**示例：**
+```cpp
+void test02() {
+    forward_list<int> fl;
+    fl.push_front(10);
+    fl.push_front(20);
+    fl.push_front(30); // 30 20 10
+
+    auto it = fl.begin();
+    fl.insert_after(it, 100); // 30 100 20 10
+    fl.erase_after(it); // 删除 100，变成 30 20 10
+
+    fl.remove(20); // 删除所有 20
+    fl.clear();
+}
+```
+
+#### 3.14.6 数据存取
+
+- `front();` // 返回第一个元素
+- 不支持 `back()`，因为单向链表无法快速访问尾部。
+
+#### 3.14.7 总结
+
+- `forward_list` 是单向链表，只支持前向迭代。
+- 插入删除 O(1)，空间开销比 `list` 小。
+- 没有 `size()`，不支持随机访问和反向遍历。
+- 适用于频繁在头部插入/删除且不需要双向遍历的场景。
+
+---
+
+### 3.15 array 容器
+
+#### 3.15.1 基本概念
+
+**功能描述：**
+- `array` 是固定大小的数组，封装成 STL 容器。
+- 大小在编译期确定，不能动态扩容。
+- 支持随机访问，提供 STL 接口（`begin`、`end`、`size`、`at`、`front`、`back` 等）。
+- 零额外开销，性能与原生数组相同。
+
+**头文件：** `#include <array>`
+
+#### 3.15.2 构造函数
+
+**函数原型：**
+- `array<T, N> arr;` // 默认构造，元素未初始化
+- `array<T, N> arr = {1, 2, 3};` // 聚合初始化
+- `array<T, N> arr(other);` // 拷贝构造
+
+**示例：**
+```cpp
+#include <array>
+#include <iostream>
+using namespace std;
+
+void test01() {
+    array<int, 5> arr1 = {1, 2, 3, 4, 5};
+    array<int, 5> arr2(arr1); // 拷贝构造
+    array<int, 5> arr3; // 未初始化
+}
+```
+
+#### 3.15.3 赋值操作
+
+- `operator=`
+- `fill(value);` // 将所有元素设为 value
+- `swap(arr);`
+
+**示例：**
+```cpp
+void test02() {
+    array<int, 5> arr;
+    arr.fill(10); // 全部变为 10
+    array<int, 5> arr2;
+    arr2 = arr;
+    arr2.swap(arr);
+}
+```
+
+#### 3.15.4 大小操作
+
+- `size();` // 返回元素个数（编译期常量）
+- `empty();` // 判断是否为空（对于 array，size 为 0 时才为空，但 N 通常大于 0）
+- `max_size();` // 同 size
+
+#### 3.15.5 数据存取
+
+- `operator[]`
+- `at(index);` // 带越界检查
+- `front();`
+- `back();`
+- `data();` // 返回指向首元素的指针
+
+**示例：**
+```cpp
+void test03() {
+    array<int, 5> arr = {1, 2, 3, 4, 5};
+    cout << arr[2] << endl; // 3
+    cout << arr.at(3) << endl; // 4
+    cout << arr.front() << endl; // 1
+    cout << arr.back() << endl; // 5
+}
+```
+
+#### 3.15.6 总结
+
+- `array` 是固定大小的 STL 数组，编译期确定大小。
+- 支持随机访问和 STL 算法。
+- 不能动态增删元素。
+- 适用于已知元素数量且不需要动态变化的场景。
+
+
+
 ## 4 STL- 函数对象
 ### 4.1 函数对象
 #### 4.1.1 函数对象概念
 **概念：**
+
 * 重载**函数调用操作符**的类，其对象常称为**函数对象**
 * **函数对象**使用重载的()时，行为类似函数调用，也叫**仿函数**
 **本质：**
@@ -3898,6 +4361,7 @@ int main() {
 * 使用内建函数对象，需要引入头文件 `#include<functional>`
 #### 4.3.2 算术仿函数
 **功能描述：**
+
 * 实现四则运算
 * 其中negate是一元运算，其他都是二元运算
 **仿函数原型：**
@@ -3933,6 +4397,7 @@ int main() {
 总结：使用内建函数对象时，需要引入头文件 `#include <functional>`
 #### 4.3.3 关系仿函数
 **功能描述：**
+
 - 实现关系对比
 **仿函数原型：**
 * `template<class T> bool equal_to<T>`                    //等于
@@ -4090,6 +4555,7 @@ int main() {
 }
 ```
 **总结：**for_each在实际开发中是最常用遍历算法，需要熟练掌握
+
 #### 5.1.2 transform
 **功能描述：**
 * 搬运容器到另一个容器中
@@ -4396,6 +4862,7 @@ int main() {
 
 #### 5.2.5 count
 **功能描述：**
+
 * 统计元素个数
 **函数原型：**
 - `count(iterator beg, iterator end, value);  `
